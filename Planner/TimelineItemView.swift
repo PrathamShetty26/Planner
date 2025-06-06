@@ -9,113 +9,118 @@
 import SwiftUI
 
 struct TimelineItemView: View {
+    @ObservedObject var viewModel: PlannerViewModel
     let item: TimelineItem
-    var endDate: Date?
-    
-    @State private var isCompleted: Bool
-    @StateObject private var viewModel = PlannerViewModel()
-    
-    init(item: TimelineItem, endDate: Date? = nil) {
-        self.item = item
-        self.endDate = endDate
-        _isCompleted = State(initialValue: item.isCompleted)
-    }
+    @State private var showingEditSheet = false
     
     var body: some View {
-        HStack(spacing: 16) {
-            // Time column
-            VStack(alignment: .trailing) {
-                Text(item.date.formatted(.dateTime.hour().minute()))
-                    .font(.subheadline.weight(.medium))
-                    .foregroundColor(.secondary)
-                if let endDate = endDate {
-                    Text(endDate.formatted(.dateTime.hour().minute()))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .frame(width: 50)
+        HStack {
+            Circle()
+                .fill(itemColor)
+                .frame(width: 8, height: 8)
             
-            // Vertical line with dot
-            VStack(spacing: 0) {
-                Circle()
-                    .fill(itemColor)
-                    .frame(width: 12, height: 12)
-                
-                Rectangle()
-                    .fill(itemColor.opacity(0.2))
-                    .frame(width: 2)
-            }
-            
-            // Content
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title)
-                    .font(.body)
-                    .foregroundColor(isCompleted ? .secondary : .primary)
-                    .strikethrough(isCompleted)
+                    .font(.system(size: 17, weight: .medium))
+                    .strikethrough(item.isCompleted)
                 
-                if item.type == .habit {
-                    Text(habitFrequencyText)
-                        .font(.caption)
+                if let notes = item.notes {
+                    Text(notes)
+                        .font(.system(size: 15))
                         .foregroundColor(.secondary)
+                }
+                
+                if item.type == .event {
+                    Text("All day")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.1))
+                        .cornerRadius(4)
                 }
             }
             
             Spacer()
             
-            // Completion checkbox for tasks and habits
-            if item.type != .event {
-                Button(action: toggleCompletion) {
-                    Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundColor(isCompleted ? itemColor : .secondary)
-                }
+            if item.type == .task, let time = item.time {
+                Text(time.formatted(.dateTime.hour().minute()))
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(.secondary)
             }
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(UIColor.secondarySystemBackground))
-        )
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .contextMenu {
+            if !Calendar.current.isDateInFuture(item.date) {
+                Button(action: { viewModel.toggleCompletion(for: item) }) {
+                    Label(item.isCompleted ? "Mark Incomplete" : "Mark Complete", 
+                          systemImage: item.isCompleted ? "xmark.circle" : "checkmark.circle")
+                }
+            }
+            
+            Button(action: { showingEditSheet = true }) {
+                Label("Edit", systemImage: "pencil")
+            }
+            
+            Button(role: .destructive, action: { viewModel.removeItem(item) }) {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        .sheet(isPresented: $showingEditSheet) {
+            EditItemView(viewModel: viewModel, item: item, isPresented: $showingEditSheet)
+        }
     }
     
     private var itemColor: Color {
         switch item.type {
-        case .event:
-            return .blue
-        case .task:
-            return .green
-        case .habit:
-            return .orange
-        }
-    }
-    
-    private var habitFrequencyText: String {
-        "Daily" // You can expand this based on your habit frequency model
-    }
-    
-    private func toggleCompletion() {
-        withAnimation {
-            isCompleted.toggle()
-            // Update the completion status in your view model here
-            if item.type == .task {
-                viewModel.toggleTaskCompletion(taskId: item.id)
-            } else if item.type == .habit {
-                viewModel.toggleHabitCompletion(habitId: item.id)
-            }
+        case .habit: return .blue
+        case .task: return .orange
+        case .event: return .purple
         }
     }
 }
 
-#Preview {
-    TimelineItemView(
-        item: TimelineItem(
-            id: "1",
-            title: "Sample Item",
-            date: Date(),
-            type: .task,
-            isCompleted: false
-        )
-    )
-    .padding()
+struct TimelineItemView_Previews: PreviewProvider {
+    static var previews: some View {
+        VStack {
+            TimelineItemView(
+                viewModel: PlannerViewModel(),
+                item: TimelineItem(
+                    id: UUID(),
+                    title: "Sample Task",
+                    type: .task,
+                    date: Date(),
+                    isCompleted: false,
+                    notes: "Task notes",
+                    time: Date()
+                )
+            )
+            
+            TimelineItemView(
+                viewModel: PlannerViewModel(),
+                item: TimelineItem(
+                    id: UUID(),
+                    title: "Sample Event",
+                    type: .event,
+                    date: Date(),
+                    isCompleted: false,
+                    notes: "Event notes"
+                )
+            )
+            
+            TimelineItemView(
+                viewModel: PlannerViewModel(),
+                item: TimelineItem(
+                    id: UUID(),
+                    title: "Sample Habit",
+                    type: .habit,
+                    date: Date(),
+                    isCompleted: false,
+                    notes: "Habit notes"
+                )
+            )
+        }
+        .padding()
+    }
 }

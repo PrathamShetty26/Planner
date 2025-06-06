@@ -10,31 +10,48 @@ import SwiftUI
 
 struct AddTaskView: View {
     @ObservedObject var viewModel: PlannerViewModel
+    @Binding var isPresented: Bool
+    
     @State private var title = ""
+    @State private var notes = ""
     @State private var date = Date()
-    @Environment(\.dismiss) var dismiss
+    @State private var time = Date()
     
     var body: some View {
         NavigationView {
             Form {
-                TextField("Task Title", text: $title)
-                DatePicker("Due Date", selection: $date, displayedComponents: [.date, .hourAndMinute])
-            }
-            .navigationTitle("Add Task")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                Section {
+                    TextField("Title", text: $title)
+                    TextField("Notes", text: $notes)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        if !title.isEmpty {
-                            viewModel.addTask(title: title, date: date)
-                            dismiss()
-                        }
-                    }
-                    .disabled(title.isEmpty)
+                
+                Section {
+                    DatePicker("Date", selection: $date, displayedComponents: [.date])
+                    DatePicker("Time", selection: $time, displayedComponents: [.hourAndMinute])
                 }
             }
+            .navigationTitle("New Task")
+            .navigationBarItems(
+                leading: Button("Cancel") { isPresented = false },
+                trailing: Button("Add") {
+                    let task = TimelineItem(
+                        id: UUID(),
+                        title: title,
+                        type: .task,
+                        date: date,
+                        isCompleted: false,
+                        notes: notes.isEmpty ? nil : notes,
+                        time: time
+                    )
+                    viewModel.addItem(task)
+                    isPresented = false
+                }
+                .disabled(title.isEmpty)
+            )
         }
     }
+}
+
+#Preview {
+    AddTaskView(viewModel: PlannerViewModel(), isPresented: .constant(true))
 }

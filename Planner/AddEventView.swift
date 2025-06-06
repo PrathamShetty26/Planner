@@ -1,85 +1,88 @@
-//
-//  AddEventView.swift
-//  Planner
-//
-//  Created by Pratham Shetty on 28/05/25.
-//
-
-
 import SwiftUI
 import EventKit
 
 struct AddEventView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var viewModel = PlannerViewModel()
+    @ObservedObject var viewModel: PlannerViewModel
     @Binding var isPresented: Bool
     
     @State private var title = ""
-    @State private var startDate = Date()
-    @State private var endDate = Date().addingTimeInterval(3600)
     @State private var notes = ""
+    @State private var date = Date()
+    @State private var showError = false
+    @State private var errorMessage = ""
+    @State private var showCalendarPrompt = false
     
     var body: some View {
         NavigationView {
             Form {
                 Section {
-                    TextField("Event Title", text: $title)
-                        .font(.body)
-                    
-                    DatePicker("Starts", selection: $startDate)
-                    DatePicker("Ends", selection: $endDate)
-                    
-                    ZStack(alignment: .topLeading) {
-                        if notes.isEmpty {
-                            Text("Notes (optional)")
-                                .foregroundColor(.secondary)
-                                .padding(.top, 8)
-                                .padding(.leading, 5)
+                    TextField("Title", text: $title)
+                    TextField("Notes", text: $notes)
+                }
+                
+                Section {
+                    DatePicker("Date", selection: $date, displayedComponents: [.date])
+                }
+                
+                if viewModel.calendarAccessStatus == .notDetermined {
+                    Section {
+                        Button("Sync with Calendar") {
+                            showCalendarPrompt = true
                         }
-                        TextEditor(text: $notes)
-                            .frame(height: 100)
                     }
                 }
             }
             .navigationTitle("New Event")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        isPresented = false
+            .navigationBarItems(
+                leading: Button("Cancel") { isPresented = false },
+                trailing: Button("Add") {
+                    addEvent()
+                }
+                .disabled(title.isEmpty)
+            )
+            .alert("Error", isPresented: $showError) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(errorMessage)
+            }
+            .alert("Calendar Access", isPresented: $showCalendarPrompt) {
+                Button("Allow Access") {
+                    Task {
+                        await viewModel.requestCalendarPermission()
                     }
                 }
-                
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        Task {
-                            await addEvent()
-                            isPresented = false
-                        }
-                    }
-                    .disabled(title.isEmpty)
-                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Would you like to sync your events with the calendar?")
             }
         }
     }
     
-    private func addEvent() async {
-        let event = EKEvent(eventStore: viewModel.eventStore)
-        event.title = title
-        event.startDate = startDate
-        event.endDate = endDate
-        event.notes = notes
-        event.calendar = viewModel.eventStore.defaultCalendarForNewEvents
+    private func addEvent() {
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
         
-        do {
-            try viewModel.eventStore.save(event, span: .thisEvent)
-            await viewModel.loadEvents()
-        } catch {
-            print("Error saving event: \(error.localizedDescription)")
-        }
+        let event = TimelineItem(
+            id: UUID(),
+            title: title,
+            type: .event,
+            date: startOfDay,
+            isCompleted: false,
+            notes: notes.isEmpty ? nil : notes,
+            time: nil,
+            endDate: endOfDay
+        )
+        
+        viewModel.addItem(event)
+        isPresented = false
     }
 }
 
 #Preview {
-    AddEventView(isPresented: .constant(true))
-}
+    AddEventView(
+        viewModel: PlannerViewModel(),
+        isPresented: .constant(true)
+    )
+} 

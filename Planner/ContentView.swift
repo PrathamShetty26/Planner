@@ -7,123 +7,215 @@
 
 import SwiftUI
 import EventKit
+import Foundation
 
+// MARK: - Content View
 struct ContentView: View {
     @StateObject private var viewModel = PlannerViewModel()
-    @State private var showingAddEvent = false
-    @State private var showingAddTask = false
-    @State private var showingAddHabit = false
     @State private var selectedDate = Date()
+    @State private var showingAddSheet = false
+    @State private var showingSettings = false
+    @State private var weekOffset = 0
+    @State private var showTodayButton = false
+    
+    var startOfWeek: Date {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: selectedDate)
+        let weekday = calendar.component(.weekday, from: today)
+        let daysToSubtract = weekday - 1 // Sunday is 1, so we subtract (weekday - 1)
+        return calendar.date(byAdding: .day, value: -daysToSubtract + (weekOffset * 7), to: today) ?? today
+    }
+    
+    private func shortDayName(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        let full = formatter.weekdaySymbols[Calendar.current.component(.weekday, from: date) - 1]
+        switch full.lowercased() {
+        case "thursday": return "Thur"
+        case "wednesday": return "Wed"
+        case "saturday": return "Sat"
+        case "sunday": return "Sun"
+        case "monday": return "Mon"
+        case "tuesday": return "Tue"
+        case "friday": return "Fri"
+        default: return String(full.prefix(3))
+        }
+    }
     
     var body: some View {
         NavigationView {
-            ZStack {
-                Color(UIColor.systemBackground)
-                    .ignoresSafeArea()
-                
-                VStack(spacing: 0) {
-                    // Custom date picker
-                    DatePickerView(selectedDate: $selectedDate)
-                        .padding(.horizontal)
-                        .padding(.top)
+            VStack(spacing: 0) {
+                // Date Header
+                HStack(alignment: .center, spacing: 16) {
+                    Text(shortDayName(from: selectedDate))
+                        .font(.system(size: 65, weight: .black))
+                        .foregroundColor(Color(UIColor.darkGray))
                     
-                    // Timeline
-                    ScrollView {
-                        LazyVStack(spacing: 16) {
-                            ForEach(viewModel.timelineItems(for: selectedDate)) { item in
-                                TimelineItemView(item: item)
-                                    .transition(.opacity)
+                    if Calendar.current.isDateInToday(selectedDate) {
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 22, height: 22)
+                    }
+                    
+                    Spacer()
+                    
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text(selectedDate.formatted(.dateTime.month().day()))
+                            .font(.system(size: 28, weight: .medium))
+                            .foregroundColor(Color(UIColor.darkGray))
+                        Text(selectedDate.formatted(.dateTime.year()))
+                            .font(.system(size: 20, weight: .regular))
+                            .foregroundColor(Color(UIColor.darkGray))
+                    }
+                }
+                .padding()
+                
+                // Week View
+                VStack(spacing: 16) {
+                    HStack(spacing: 0) {
+                        ForEach(0..<7) { dayOffset in
+                            let date = Calendar.current.date(byAdding: .day, value: dayOffset, to: startOfWeek) ?? selectedDate
+                            WeekDayButton(
+                                date: date,
+                                isSelected: Calendar.current.isDate(date, inSameDayAs: selectedDate),
+                                isToday: Calendar.current.isDateInToday(date)
+                            ) {
+                                withAnimation {
+                                    selectedDate = date
+                                    showTodayButton = !Calendar.current.isDateInToday(date)
+                                }
                             }
                         }
-                        .padding()
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 20)
+                            .onEnded { value in
+                                withAnimation {
+                                    if value.translation.width < 0 {
+                                        weekOffset += 1
+                                    } else {
+                                        weekOffset -= 1
+                                    }
+                                    showTodayButton = !Calendar.current.isDateInToday(selectedDate)
+                                }
+                            }
+                    )
+                    
+                    if showTodayButton {
+                        Button(action: {
+                            withAnimation {
+                                selectedDate = Date()
+                                weekOffset = 0
+                                showTodayButton = false
+                            }
+                        }) {
+                            Text("Today")
+                                .font(.system(size: 15, weight: .medium))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color(UIColor.systemGray6))
+                                .foregroundColor(.primary)
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+                .padding(.horizontal)
+                
+                // Empty State / Timeline
+                ZStack {
+                    if viewModel.timelineItems(for: selectedDate).isEmpty {
+                        VStack {
+                            Spacer()
+                            Image(systemName: "calendar")
+                                .font(.system(size: 40))
+                                .foregroundColor(.secondary)
+                            Text("No items scheduled")
+                                .font(.title3)
+                                .foregroundColor(.secondary)
+                            Text("Tap + to add a new item")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 12) {
+                                ForEach(viewModel.timelineItems(for: selectedDate)) { item in
+                                    TimelineItemView(viewModel: viewModel, item: item)
+                                }
+                            }
+                            .padding()
+                        }
                     }
                 }
                 
-                // Floating Action Button
-                VStack {
+                // Bottom Navigation
+                HStack {
+                    Button(action: { showingSettings = true }) {
+                        Image(systemName: "hexagon")
+                            .font(.title2)
+                    }
+                    
                     Spacer()
-                    HStack {
-                        Spacer()
-                        Menu {
-                            Button(action: { showingAddEvent = true }) {
-                                Label("Add Event", systemImage: "calendar")
-                            }
-                            Button(action: { showingAddTask = true }) {
-                                Label("Add Task", systemImage: "checklist")
-                            }
-                            Button(action: { showingAddHabit = true }) {
-                                Label("Add Habit", systemImage: "repeat")
-                            }
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.title2.weight(.semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Color.accentColor)
-                                .clipShape(Circle())
-                                .shadow(radius: 4)
-                        }
-                        .padding()
+                    
+                    Button(action: { showingAddSheet = true }) {
+                        Image(systemName: "plus")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                            .frame(width: 56, height: 56)
+                            .background(Color.accentColor)
+                            .clipShape(Circle())
+                            .shadow(radius: 4)
+                    }
+                    
+                    Spacer()
+                    
+                    Button(action: {}) {
+                        Image(systemName: "square.grid.2x2")
+                            .font(.title2)
                     }
                 }
+                .padding()
+                .background(Color(UIColor.systemBackground))
             }
-            .navigationTitle("Timeline")
-            .sheet(isPresented: $showingAddEvent) {
-                AddEventView(isPresented: $showingAddEvent)
+            .sheet(isPresented: $showingAddSheet) {
+                AddItemView(viewModel: viewModel, isPresented: $showingAddSheet)
             }
-            .sheet(isPresented: $showingAddTask) {
-                AddTaskView(isPresented: $showingAddTask)
-            }
-            .sheet(isPresented: $showingAddHabit) {
-                AddHabitView(isPresented: $showingAddHabit)
+            .sheet(isPresented: $showingSettings) {
+                SettingsView(isPresented: $showingSettings, viewModel: viewModel)
             }
         }
     }
 }
 
-struct DatePickerView: View {
-    @Binding var selectedDate: Date
-    
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(-2...4, id: \.self) { offset in
-                    let date = Calendar.current.date(byAdding: .day, value: offset, to: Date()) ?? Date()
-                    DateCell(date: date, isSelected: Calendar.current.isDate(date, inSameDayAs: selectedDate))
-                        .onTapGesture {
-                            withAnimation {
-                                selectedDate = date
-                            }
-                        }
-                }
-            }
-            .padding(.horizontal, 4)
-        }
-    }
-}
-
-struct DateCell: View {
+struct WeekDayButton: View {
     let date: Date
     let isSelected: Bool
+    let isToday: Bool
+    let action: () -> Void
     
     var body: some View {
-        VStack(spacing: 8) {
-            Text(date.formatted(.dateTime.weekday(.abbreviated)))
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            Text(date.formatted(.dateTime.day()))
-                .font(.title3.weight(.medium))
-            
-            Circle()
-                .fill(isSelected ? Color.accentColor : Color.clear)
-                .frame(width: 4, height: 4)
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Text(date.formatted(.dateTime.weekday(.abbreviated)))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.gray)
+                    .textCase(.uppercase)
+                Text(date.formatted(.dateTime.day()))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.gray)
+                Circle()
+                    .fill(isToday ? Color.red : Color.clear)
+                    .frame(width: 4, height: 4)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(isSelected ? Color(UIColor.systemGray4) : Color.clear, lineWidth: 1)
+            )
         }
-        .frame(width: 45, height: 72)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
-        )
+        .buttonStyle(.plain)
     }
 }
 

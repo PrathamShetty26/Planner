@@ -1,26 +1,166 @@
 import Foundation
 import EventKit
 import UserNotifications
+import SwiftUI
 
 class PlannerViewModel: ObservableObject {
-    @Published var tasks: [PlannerModels.Task] = []
-    @Published var habits: [PlannerModels.Habit] = []
-    @Published var events: [EKEvent] = []
-    @Published var permissionErrorMessage: String?
+    @Published private(set) var items: [TimelineItem] = []
     @Published var calendarAccessStatus: EKAuthorizationStatus = .notDetermined
     @Published var showCalendarPrompt = false
     @Published var showSettingsPrompt = false
+    @Published var permissionErrorMessage: String?
+    @Published var showCompletedItems = true
+    @Published var groupByType = false
     
     private var eventStore: EKEventStore
     private var hasRequestedCalendarPermission = false
     private var hasRequestedNotificationPermission = false
-
+    
     init() {
         self.eventStore = EKEventStore()
         Task {
             await initializePermissions()
+            if calendarAccessStatus == .authorized || calendarAccessStatus == .fullAccess {
+                await syncCalendarEvents()
+            }
         }
     }
+    
+    // MARK: - Public Methods
+    
+    func addItem(_ item: TimelineItem) {
+        items.append(item)
+        if item.type == .task {
+            scheduleNotification(for: item)
+        } else if item.type == .event {
+            Task {
+                await addEventToCalendar(item)
+            }
+        }
+    }
+    
+    func toggleCompletion(for item: TimelineItem) {
+        guard let index = items.firstIndex(of: item) else { return }
+        // Only allow completing items for today or past dates
+        guard !Calendar.current.isDateInFuture(item.date) else { return }
+        
+        // For habits, create next day's habit if completing today's
+        if item.type == .habit && Calendar.current.isDateInToday(item.date) {
+            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+            let newHabit = TimelineItem(
+                id: UUID(),
+                title: item.title,
+                type: .habit,
+                date: tomorrow,
+                isCompleted: false,
+                notes: item.notes
+            )
+            items.append(newHabit)
+        }
+        
+        items[index].isCompleted.toggle()
+    }
+    
+    func removeItem(_ item: TimelineItem) {
+        items.removeAll { $0.id == item.id }
+        if item.type == .task {
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [item.id.uuidString])
+        } else if item.type == .event {
+            Task {
+                await removeEventFromCalendar(item)
+            }
+        }
+    }
+    
+    func updateItem(_ item: TimelineItem) {
+        guard let index = items.firstIndex(of: item) else { return }
+        items[index] = item
+        if item.type == .task {
+            scheduleNotification(for: item)
+        } else if item.type == .event {
+            Task {
+                await updateEventInCalendar(item)
+            }
+        }
+    }
+    
+    func timelineItems(for date: Date) -> [TimelineItem] {
+        let filtered = items.filter { item in
+            let sameDay = Calendar.current.isDate(item.date, inSameDayAs: date)
+            return showCompletedItems ? sameDay : (sameDay && !item.isCompleted)
+        }
+        
+        if groupByType {
+            return filtered.sorted { item1, item2 in
+                if item1.type == item2.type {
+                    return item1.time ?? item1.date < item2.time ?? item2.date
+                }
+                return item1.type.rawValue < item2.type.rawValue
+            }
+        } else {
+            return filtered.sorted { item1, item2 in
+                item1.time ?? item1.date < item2.time ?? item2.date
+            }
+        }
+    }
+    
+    @MainActor
+    func requestCalendarPermission() async {
+        if #available(iOS 17.0, *) {
+            do {
+                let granted = try await eventStore.requestFullAccessToEvents()
+                if granted {
+                    self.calendarAccessStatus = .fullAccess
+                    self.permissionErrorMessage = nil
+                    self.eventStore = EKEventStore()
+                    await syncCalendarEvents()
+                } else {
+                    self.calendarAccessStatus = .denied
+                    self.showSettingsPrompt = true
+                    self.permissionErrorMessage = "Please enable Calendar access in Settings"
+                }
+            } catch {
+                self.calendarAccessStatus = .denied
+                self.showSettingsPrompt = true
+                self.permissionErrorMessage = "Failed to request calendar access: \(error.localizedDescription)"
+            }
+        } else {
+            let status = EKEventStore.authorizationStatus(for: .event)
+            if status == .notDetermined {
+                let granted = await withCheckedContinuation { continuation in
+                    eventStore.requestAccess(to: .event) { granted, error in
+                        continuation.resume(returning: granted)
+                    }
+                }
+                
+                if granted {
+                    self.calendarAccessStatus = .authorized
+                    self.permissionErrorMessage = nil
+                    self.eventStore = EKEventStore()
+                    await syncCalendarEvents()
+                } else {
+                    self.calendarAccessStatus = .denied
+                    self.showSettingsPrompt = true
+                    self.permissionErrorMessage = "Please enable Calendar access in Settings"
+                }
+            }
+        }
+    }
+    
+    @MainActor
+    func requestNotificationPermission() async {
+        if !hasRequestedNotificationPermission {
+            hasRequestedNotificationPermission = true
+            do {
+                let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+                print("Notification permission \(granted ? "granted" : "denied")")
+            } catch {
+                print("Error requesting notification permission: \(error)")
+            }
+        }
+    }
+    
+    // MARK: - Private Methods
     
     @MainActor
     private func initializePermissions() async {
@@ -40,195 +180,130 @@ class PlannerViewModel: ObservableObject {
             showCalendarPrompt = true
         }
     }
-
+    
+    // MARK: - Calendar Sync
     @MainActor
-    private func requestNotificationPermission() async {
-        if !hasRequestedNotificationPermission {
-            hasRequestedNotificationPermission = true
-            do {
-                let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
-                if granted {
-                    print("Notification permission granted")
-                } else {
-                    print("Notification permission denied")
-                }
-            } catch {
-                print("Error requesting notification permission: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    @MainActor
-    func requestCalendarPermission() async {
-        if #available(iOS 17.0, *) {
-            let status = EKEventStore.authorizationStatus(for: .event)
-            print("iOS 17+ Calendar permission status before request: \(status.rawValue)")
-            
-            do {
-                print("Attempting to request full calendar access...")
-                let granted = try await eventStore.requestFullAccessToEvents()
-                print("Calendar access request result: \(granted)")
-                
-                // Check status again after request
-                let newStatus = EKEventStore.authorizationStatus(for: .event)
-                print("Calendar status after request: \(newStatus.rawValue)")
-                
-                if granted {
-                    print("Calendar permission granted successfully")
-                    self.calendarAccessStatus = .fullAccess
-                    self.permissionErrorMessage = nil
-                    // Reinitialize event store after permission granted
-                    self.eventStore = EKEventStore()
-                    await self.fetchCalendarEvents()
-                } else {
-                    print("Calendar access denied by user")
-                    self.calendarAccessStatus = .denied
-                    self.showSettingsPrompt = true
-                    self.permissionErrorMessage = "Please enable Calendar access in Settings > Privacy & Security > Calendars"
-                }
-            } catch {
-                print("Error requesting calendar access: \(error)")
-                print("Detailed error: \(error.localizedDescription)")
-                self.calendarAccessStatus = .denied
-                self.showSettingsPrompt = true
-                self.permissionErrorMessage = "Failed to request calendar access: \(error.localizedDescription)"
-            }
-        } else {
-            // Pre-iOS 17 handling
-            let status = EKEventStore.authorizationStatus(for: .event)
-            print("Pre-iOS 17 Calendar permission status: \(status.rawValue)")
-            
-            if status == .notDetermined {
-                print("Pre-iOS 17: Requesting calendar access...")
-                let granted = await withCheckedContinuation { continuation in
-                    eventStore.requestAccess(to: .event) { granted, error in
-                        if let error = error {
-                            print("Error in pre-iOS 17 request: \(error)")
-                        }
-                        continuation.resume(returning: granted)
-                    }
-                }
-                
-                // Check status after request
-                let newStatus = EKEventStore.authorizationStatus(for: .event)
-                print("Pre-iOS 17 status after request: \(newStatus.rawValue)")
-                
-                if granted {
-                    print("Calendar permission granted successfully")
-                    self.calendarAccessStatus = .authorized
-                    self.permissionErrorMessage = nil
-                    // Reinitialize event store after permission granted
-                    self.eventStore = EKEventStore()
-                    await self.fetchCalendarEvents()
-                } else {
-                    print("Calendar access denied by user")
-                    self.calendarAccessStatus = .denied
-                    self.showSettingsPrompt = true
-                    self.permissionErrorMessage = "Please enable Calendar access in Settings > Privacy & Security > Calendars"
-                }
-            } else if status != .authorized {
-                print("Calendar permission already determined: \(status)")
-                self.calendarAccessStatus = status
-                self.showSettingsPrompt = true
-                self.permissionErrorMessage = "Please enable Calendar access in Settings > Privacy & Security > Calendars"
-            }
-        }
-    }
-
-    @MainActor
-    private func fetchCalendarEvents() async {
-        if #available(iOS 17.0, *) {
-            guard calendarAccessStatus == .fullAccess else {
-                print("Cannot fetch events - no full access")
-                return
-            }
-        } else {
-            guard calendarAccessStatus == .authorized else {
-                print("Cannot fetch events - no authorization")
-                return
-            }
-        }
+    private func syncCalendarEvents() async {
+        guard calendarAccessStatus == .authorized || calendarAccessStatus == .fullAccess else { return }
         
         let calendar = Calendar.current
         let now = Date()
-        let startDate = calendar.startOfDay(for: now)
-        let endDate = calendar.date(byAdding: .day, value: 7, to: startDate)!
+        let startDate = calendar.date(byAdding: .month, value: -1, to: now) ?? now
+        let endDate = calendar.date(byAdding: .month, value: 1, to: now) ?? now
         
         let predicate = eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: nil)
-        let fetchedEvents = eventStore.events(matching: predicate)
-        self.events = fetchedEvents
-        print("Fetched \(fetchedEvents.count) events")
-    }
-
-    func addTask(title: String, date: Date) {
-        let newTask = PlannerModels.Task(id: UUID(), title: title, date: date, isCompleted: false)
-        tasks.append(newTask)
-        scheduleNotification(for: newTask)
-    }
-
-    func addHabit(title: String, frequency: String) {
-        let newHabit = PlannerModels.Habit(id: UUID(), title: title, frequency: frequency, isCompletedToday: false)
-        habits.append(newHabit)
-    }
-
-    @MainActor
-    func addEvent(title: String, startDate: Date, endDate: Date) async {
-        let status = EKEventStore.authorizationStatus(for: .event)
-        print("Adding event, current permission status: \(status.rawValue) (\(status))")
+        let events = eventStore.events(matching: predicate)
         
-        if status == .fullAccess {
-            let event = EKEvent(eventStore: self.eventStore)
-            event.title = title
-            event.startDate = startDate
-            event.endDate = endDate
-            event.calendar = self.eventStore.defaultCalendarForNewEvents
+        // Convert EKEvents to TimelineItems
+        let newItems = events.map { event in
+            TimelineItem(
+                id: UUID(),
+                title: event.title,
+                type: .event,
+                date: event.startDate,
+                isCompleted: false,
+                notes: event.notes,
+                time: event.startDate,
+                endDate: event.endDate
+            )
+        }
+        
+        // Add only events that don't already exist
+        let existingTitles = Set(items.filter { $0.type == .event }.map { $0.title })
+        items.append(contentsOf: newItems.filter { !existingTitles.contains($0.title) })
+    }
+    
+    @MainActor
+    private func addEventToCalendar(_ item: TimelineItem) async {
+        guard calendarAccessStatus == .authorized || calendarAccessStatus == .fullAccess else { return }
+        
+        let event = EKEvent(eventStore: eventStore)
+        event.title = item.title
+        event.notes = item.notes
+        event.startDate = item.time ?? item.date
+        event.endDate = item.endDate ?? Calendar.current.date(byAdding: .hour, value: 1, to: item.time ?? item.date) ?? item.date
+        event.calendar = eventStore.defaultCalendarForNewEvents
+        
+        do {
+            try eventStore.save(event, span: .thisEvent)
+        } catch {
+            print("Error saving event to calendar: \(error)")
+        }
+    }
+    
+    @MainActor
+    private func updateEventInCalendar(_ item: TimelineItem) async {
+        guard calendarAccessStatus == .authorized || calendarAccessStatus == .fullAccess else { return }
+        
+        // Find the event by title (since we don't store EKEvent identifiers)
+        let startDate = Calendar.current.date(byAdding: .day, value: -1, to: item.date) ?? item.date
+        let endDate = Calendar.current.date(byAdding: .day, value: 1, to: item.date) ?? item.date
+        let predicate = eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: nil)
+        let events = eventStore.events(matching: predicate)
+        
+        if let event = events.first(where: { $0.title == item.title }) {
+            event.title = item.title
+            event.notes = item.notes
+            event.startDate = item.time ?? item.date
+            event.endDate = item.endDate ?? Calendar.current.date(byAdding: .hour, value: 1, to: item.time ?? item.date) ?? item.date
             
             do {
-                try self.eventStore.save(event, span: .thisEvent)
-                self.events.append(event)
-                print("Event saved successfully: \(event.eventIdentifier ?? "")")
-                self.permissionErrorMessage = nil
+                try eventStore.save(event, span: .thisEvent)
             } catch {
-                print("Error saving event: \(error.localizedDescription)")
-                self.permissionErrorMessage = "Failed to save event: \(error.localizedDescription)"
+                print("Error updating event in calendar: \(error)")
             }
-        } else {
-            await requestCalendarPermission()
         }
     }
-
-    func toggleHabitCompletion(habit: PlannerModels.Habit) {
-        if let index = habits.firstIndex(where: { $0.id == habit.id }) {
-            habits[index].isCompletedToday.toggle()
-            print("Toggled habit: \(habit.title), isCompleted: \(habit.isCompletedToday)")
+    
+    @MainActor
+    private func removeEventFromCalendar(_ item: TimelineItem) async {
+        guard calendarAccessStatus == .authorized || calendarAccessStatus == .fullAccess else { return }
+        
+        // Find the event by title
+        let startDate = Calendar.current.date(byAdding: .day, value: -1, to: item.date) ?? item.date
+        let endDate = Calendar.current.date(byAdding: .day, value: 1, to: item.date) ?? item.date
+        let predicate = eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: nil)
+        let events = eventStore.events(matching: predicate)
+        
+        if let event = events.first(where: { $0.title == item.title }) {
+            do {
+                try eventStore.remove(event, span: .thisEvent)
+            } catch {
+                print("Error removing event from calendar: \(error)")
+            }
         }
     }
-
-    func scheduleNotification(for task: PlannerModels.Task) {
+    
+    private func scheduleNotification(for item: TimelineItem) {
         let content = UNMutableNotificationContent()
-        content.title = "Task Reminder"
-        content.body = "Don't forget: \(task.title)"
+        content.title = item.type.rawValue
+        content.body = item.title
         content.sound = .default
-
+        
         let triggerDate = Calendar.current.dateComponents(
             [.year, .month, .day, .hour, .minute],
-            from: task.date
+            from: item.time ?? item.date
         )
         let trigger = UNCalendarNotificationTrigger(dateMatching: triggerDate, repeats: false)
-
+        
         let request = UNNotificationRequest(
-            identifier: task.id.uuidString,
+            identifier: item.id.uuidString,
             content: content,
             trigger: trigger
         )
-
+        
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
-                print("Error scheduling notification: \(error.localizedDescription)")
-            } else {
-                print("Notification scheduled for task: \(task.title)")
+                print("Error scheduling notification: \(error)")
             }
         }
     }
+}
 
+extension Calendar {
+    func isDateInFuture(_ date: Date) -> Bool {
+        let today = startOfDay(for: Date())
+        let compareDate = startOfDay(for: date)
+        return compareDate > today
+    }
 }
