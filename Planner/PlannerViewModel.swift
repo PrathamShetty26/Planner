@@ -11,6 +11,12 @@ class PlannerViewModel: ObservableObject {
     @Published var permissionErrorMessage: String?
     @Published var showCompletedItems = true
     @Published var groupByType = false
+    @Published var favoriteSports: [FavoriteSport] = [] {
+        didSet { saveFavoriteSports() }
+    }
+    @Published var showSportsSchedule: Bool = false {
+        didSet { UserDefaults.standard.set(showSportsSchedule, forKey: "showSportsSchedule") }
+    }
     
     private var eventStore: EKEventStore
     private var hasRequestedCalendarPermission = false
@@ -18,6 +24,8 @@ class PlannerViewModel: ObservableObject {
     
     init() {
         self.eventStore = EKEventStore()
+        loadFavoriteSports()
+        showSportsSchedule = UserDefaults.standard.bool(forKey: "showSportsSchedule")
         Task {
             await initializePermissions()
             if calendarAccessStatus == .authorized || calendarAccessStatus == .fullAccess {
@@ -104,6 +112,19 @@ class PlannerViewModel: ObservableObject {
         }
     }
     
+    func timelineItemsWithSports(for date: Date, completion: @escaping ([TimelineItem]) -> Void) {
+        let userItems = timelineItems(for: date)
+        fetchSportsSchedule(for: date) { sportsItems in
+            var all = userItems + sportsItems
+            all.sort { (lhs, rhs) -> Bool in
+                let lhsTime = lhs.time ?? lhs.date
+                let rhsTime = rhs.time ?? rhs.date
+                return lhsTime < rhsTime
+            }
+            completion(all)
+        }
+    }
+    
     @MainActor
     func requestCalendarPermission() async {
         if #available(iOS 17.0, *) {
@@ -157,6 +178,64 @@ class PlannerViewModel: ObservableObject {
             } catch {
                 print("Error requesting notification permission: \(error)")
             }
+        }
+    }
+    
+    // MARK: - Sports API
+    func fetchSportsSchedule(for date: Date, completion: @escaping ([TimelineItem]) -> Void) {
+        guard !favoriteSports.isEmpty else {
+            completion([])
+            return
+        }
+        let apiKey = "dd06c346e5161e49a8908022ab081232"
+        let dateString = ISO8601DateFormatter().string(from: date).prefix(10)
+        var teams: [String] = []
+        for sport in favoriteSports {
+            for team in sport.teams {
+                teams.append(team.name)
+            }
+        }
+        var allMatches: [TimelineItem] = []
+        let group = DispatchGroup()
+        for team in teams {
+            group.enter()
+            let urlString = "https://v3.football.api-sports.io/fixtures?search=\(team)&date=\(dateString)"
+            guard let url = URL(string: urlString) else { group.leave(); continue }
+            var request = URLRequest(url: url)
+            request.setValue(apiKey, forHTTPHeaderField: "x-apisports-key")
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                defer { group.leave() }
+                guard let data = data, error == nil else { return }
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let responseArr = json?["response"] as? [[String: Any]] ?? []
+                for match in responseArr {
+                    let fixture = match["fixture"] as? [String: Any]
+                    let timestamp = fixture?["timestamp"] as? TimeInterval
+                    let teamsDict = match["teams"] as? [String: Any]
+                    let home = teamsDict?["home"] as? [String: Any]
+                    let away = teamsDict?["away"] as? [String: Any]
+                    let homeName = home?["name"] as? String
+                    let awayName = away?["name"] as? String
+                    if let timestamp, let homeName, let awayName {
+                        let matchDate = Date(timeIntervalSince1970: timestamp)
+                        let item = TimelineItem(
+                            id: UUID(),
+                            title: "\(homeName) vs \(awayName)",
+                            type: .event,
+                            date: date,
+                            isCompleted: false,
+                            notes: "Sports Match",
+                            time: matchDate,
+                            endDate: nil,
+                            location: nil
+                        )
+                        allMatches.append(item)
+                    }
+                }
+            }.resume()
+        }
+        group.notify(queue: .main) {
+            completion(allMatches)
         }
     }
     
@@ -296,6 +375,19 @@ class PlannerViewModel: ObservableObject {
             if let error = error {
                 print("Error scheduling notification: \(error)")
             }
+        }
+    }
+    
+    private func saveFavoriteSports() {
+        if let data = try? JSONEncoder().encode(favoriteSports) {
+            UserDefaults.standard.set(data, forKey: "favoriteSports")
+        }
+    }
+    
+    private func loadFavoriteSports() {
+        if let data = UserDefaults.standard.data(forKey: "favoriteSports"),
+           let sports = try? JSONDecoder().decode([FavoriteSport].self, from: data) {
+            favoriteSports = sports
         }
     }
 }

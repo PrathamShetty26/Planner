@@ -7,6 +7,7 @@ struct SettingsView: View {
     @ObservedObject var viewModel: PlannerViewModel
     @State private var showCalendarPrompt = false
     @State private var showNotificationPrompt = false
+    @State private var showSportsBrowser = false
     
     var body: some View {
         NavigationView {
@@ -48,6 +49,19 @@ struct SettingsView: View {
                     Toggle("Group by Type", isOn: $viewModel.groupByType)
                 }
                 
+                Section(header: Text("Sports")) {
+                    Button(action: { showSportsBrowser = true }) {
+                        HStack {
+                            Text("Sports")
+                                .font(.headline)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                
                 Section(header: Text("About")) {
                     HStack {
                         Text("Version")
@@ -78,6 +92,9 @@ struct SettingsView: View {
                 Button("Cancel", role: .cancel) { }
             } message: {
                 Text("Enable notifications for task reminders?")
+            }
+            .fullScreenCover(isPresented: $showSportsBrowser) {
+                SportsBrowserView(viewModel: viewModel, isPresented: $showSportsBrowser)
             }
         }
     }

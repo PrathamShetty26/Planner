@@ -17,6 +17,9 @@ struct ContentView: View {
     @State private var showingSettings = false
     @State private var weekOffset = 0
     @State private var showTodayButton = false
+    @State private var combinedItems: [TimelineItem] = []
+    @State private var isLoadingSports = false
+    @State private var lastRequestID: UUID = UUID()
     
     var startOfWeek: Date {
         let calendar = Calendar.current
@@ -121,9 +124,16 @@ struct ContentView: View {
                 }
                 .padding(.horizontal)
                 
-                // Empty State / Timeline
-                ZStack {
-                    if viewModel.timelineItems(for: selectedDate).isEmpty {
+                // Timeline Section
+                VStack {
+                    if isLoadingSports {
+                        HStack {
+                            Spacer()
+                            ProgressView().scaleEffect(0.7)
+                            Spacer()
+                        }
+                    }
+                    if combinedItems.isEmpty && !isLoadingSports {
                         VStack {
                             Spacer()
                             Image(systemName: "calendar")
@@ -140,10 +150,11 @@ struct ContentView: View {
                     } else {
                         ScrollView {
                             LazyVStack(spacing: 12) {
-                                ForEach(viewModel.timelineItems(for: selectedDate)) { item in
+                                ForEach(combinedItems) { item in
                                     TimelineItemView(viewModel: viewModel, item: item)
                                 }
                             }
+                            .animation(.easeInOut, value: combinedItems)
                             .padding()
                         }
                     }
@@ -184,6 +195,22 @@ struct ContentView: View {
             .sheet(isPresented: $showingSettings) {
                 SettingsView(isPresented: $showingSettings, viewModel: viewModel)
             }
+            .onAppear(perform: loadCombinedItems)
+            .onChange(of: selectedDate) { _ in loadCombinedItems() }
+        }
+    }
+
+    private func loadCombinedItems() {
+        isLoadingSports = true
+        let requestID = UUID()
+        lastRequestID = requestID
+        let date = selectedDate
+        viewModel.timelineItemsWithSports(for: date) { items in
+            // Only update if this is the latest request
+            if lastRequestID == requestID {
+                combinedItems = items
+                isLoadingSports = false
+            }
         }
     }
 }
@@ -202,7 +229,7 @@ struct WeekDayButton: View {
                     .foregroundColor(.gray)
                     .textCase(.uppercase)
                 Text(date.formatted(.dateTime.day()))
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.gray)
                 Circle()
                     .fill(isToday ? Color.red : Color.clear)

@@ -59,3 +59,14 @@ public enum Weekday: Int, CaseIterable {
         }
     }
 }
+
+public struct FavoriteSport: Codable, Hashable, Identifiable {
+    public var id: String { name }
+    public let name: String
+    public var teams: [FavoriteTeam]
+}
+
+public struct FavoriteTeam: Codable, Hashable, Identifiable {
+    public var id: String { name }
+    public let name: String
+}
