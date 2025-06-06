@@ -182,7 +182,7 @@ struct SportsBrowserView: View {
     private func fetchSports() {
         isLoading = true
         error = nil
-        let apiKey = "dd06c346e5161e49a8908022ab081232"
+        let apiKey = "lmao"
         let urlString = "https://v3.football.api-sports.io/sports"
         guard let url = URL(string: urlString) else { isLoading = false; return }
         var request = URLRequest(url: url)
