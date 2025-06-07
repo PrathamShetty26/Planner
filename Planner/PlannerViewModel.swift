@@ -239,6 +239,34 @@ class PlannerViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Public Convenience Methods for Testing
+    func addEvent(title: String, startDate: Date, endDate: Date) {
+        let event = TimelineItem(
+            id: UUID(),
+            title: title,
+            type: .event,
+            date: startDate,
+            isCompleted: false,
+            notes: nil,
+            time: startDate,
+            endDate: endDate
+        )
+        addItem(event)
+    }
+    
+    func addTask(title: String, date: Date) {
+        let task = TimelineItem(
+            id: UUID(),
+            title: title,
+            type: .task,
+            date: date,
+            isCompleted: false,
+            notes: nil,
+            time: date
+        )
+        addItem(task)
+    }
+    
     // MARK: - Private Methods
     
     @MainActor
@@ -353,7 +381,7 @@ class PlannerViewModel: ObservableObject {
         }
     }
     
-    private func scheduleNotification(for item: TimelineItem) {
+    func scheduleNotification(for item: TimelineItem) {
         let content = UNMutableNotificationContent()
         content.title = item.type.rawValue
         content.body = item.title

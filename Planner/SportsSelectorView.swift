@@ -38,14 +38,15 @@ struct SportsSelectorView: View {
                 }
             }
             // 2. Leagues bubbles
-            if let sport = selectedSport {
+            if selectedSport != nil {
                 if isLoadingLeagues {
                     ProgressView("Loading leagues...")
                 } else if !leagues.isEmpty {
                     Text("Choose a League:").font(.subheadline)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack {
-                            ForEach(leagues, id: \.id) { league in
+                            ForEach(leagues.indices, id: \.self) { index in
+                                let league = leagues[index]
                                 Button(action: {
                                     withAnimation {
                                         selectedLeague = league
@@ -66,7 +67,7 @@ struct SportsSelectorView: View {
                 }
             }
             // 3. Teams bubbles
-            if let league = selectedLeague {
+            if selectedLeague != nil {
                 if isLoadingTeams {
                     ProgressView("Loading teams...")
                 } else if !teams.isEmpty {

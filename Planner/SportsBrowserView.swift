@@ -1,13 +1,13 @@
 import SwiftUI
 
 struct SportsBrowserView: View {
-    @ObservedObject var viewModel: PlannerViewModel
+    @StateObject var viewModel: PlannerViewModel
     @Binding var isPresented: Bool
-    @State private var sports: [(key: String, name: String)] = []
-    @State private var selectedSport: (key: String, name: String)? = nil
-    @State private var leagues: [(id: Int, name: String)] = []
-    @State private var selectedLeague: (id: Int, name: String)? = nil
+    @State private var sports: [String] = []
+    @State private var leagues: [String] = []
     @State private var teams: [FavoriteTeam] = []
+    @State private var selectedSport: String? = nil
+    @State private var selectedLeague: String? = nil
     @State private var isLoading = false
     @State private var error: IdentifiableError? = nil
     @State private var navLevel: Int = 0 // 0: sports, 1: leagues, 2: teams
@@ -36,7 +36,7 @@ struct SportsBrowserView: View {
         NavigationView {
             VStack(spacing: 0) {
                 headerView
-                contentView
+                Group { dynamicContentView }
                 Divider().padding(.vertical)
                 favoritesSection
                 Spacer()
@@ -65,22 +65,11 @@ struct SportsBrowserView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(viewModel.favoriteSports) { sport in
-                            HStack {
-                                Text(sport.name).bold()
-                                Spacer()
-                                Button(action: { removeSport(sport) }) {
-                                    Image(systemName: "trash").foregroundColor(.red)
-                                }
-                            }
-                            ForEach(sport.teams) { team in
-                                HStack {
-                                    Text(team.name)
-                                    Spacer()
-                                    Button(action: { removeTeam(sport: sport, team: team) }) {
-                                        Image(systemName: "minus.circle").foregroundColor(.red)
-                                    }
-                                }
-                            }
+                            FavoriteSportView(
+                                sport: sport,
+                                removeSport: { removeSport(sport.name) },
+                                removeTeam: { team in removeTeam(sport: sport.name, team: team.name) }
+                            )
                         }
                     }
                     .padding(.horizontal)
@@ -90,99 +79,56 @@ struct SportsBrowserView: View {
     }
     
     @ViewBuilder
-    private var contentView: some View {
-        switch navLevel {
-        case 0:
-            sportsGrid
-        case 1:
-            leaguesGrid
-        case 2:
-            teamsGrid
-        default:
-            EmptyView()
+    private var dynamicContentView: some View {
+        Group {
+            if selectedSport != nil {
+                leagueOrTeamView
+            } else if !sports.isEmpty {
+                sportsView
+            } else {
+                EmptyView()
+            }
+        }
+        if isLoading {
+            ProgressView().padding()
         }
     }
-    
-    private var sportsGrid: some View {
-        VStack {
-            Text("Choose a Sport").font(.title2).padding(.bottom)
+
+    @ViewBuilder
+    private var leagueOrTeamView: some View {
+        if selectedLeague != nil {
             ExpandingBubbleCloudView(
-                items: staticSports,
-                childMap: staticLeagues,
-                onSelect: { sport in selectedStaticSport = sport },
-                expanded: selectedStaticSport,
-                onDismiss: { selectedStaticSport = nil }
+                items: teams.map { $0.name },
+                onSelect: { _ in },
+                expanded: nil,
+                onDismiss: { self.selectedLeague = nil }
+            )
+            .frame(height: 500)
+        } else {
+            ExpandingBubbleCloudView(
+                items: leagues,
+                onSelect: { league in self.selectedLeague = league },
+                expanded: nil,
+                onDismiss: { self.selectedSport = nil }
             )
             .frame(height: 500)
         }
     }
-    
-    private var leaguesGrid: some View {
-        VStack {
-            HStack {
-                Button(action: { navLevel = 0; selectedSport = nil }) {
-                    Image(systemName: "chevron.left")
-                }.padding(.leading)
-                Text(selectedSport?.name ?? "").font(.title2)
-                Spacer()
-            }
-            if isLoading { ProgressView() }
-            else {
-                ScrollView {
-                    LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 2), spacing: 16) {
-                        ForEach(leagues, id: \.id) { league in
-                            Button(action: {
-                                selectedLeague = league
-                                navLevel = 2
-                                fetchTeams(for: league.id, sportKey: selectedSport?.key ?? "")
-                            }) {
-                                Text(league.name)
-                                    .frame(maxWidth: .infinity, minHeight: 44)
-                                    .background(Color(UIColor.systemGray5))
-                                    .clipShape(Capsule())
-                            }
-                        }
-                    }
-                    .padding()
-                }
-            }
-        }
-    }
-    
-    private var teamsGrid: some View {
-        VStack {
-            HStack {
-                Button(action: { navLevel = 1; selectedLeague = nil }) {
-                    Image(systemName: "chevron.left")
-                }.padding(.leading)
-                Text(selectedLeague?.name ?? "").font(.title2)
-                Spacer()
-            }
-            if isLoading { ProgressView() }
-            else {
-                ScrollView {
-                    LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 2), spacing: 16) {
-                        ForEach(teams) { team in
-                            Button(action: {
-                                addTeamToFavorites(sport: selectedSport?.name ?? "", team: team)
-                            }) {
-                                Text(team.name)
-                                    .frame(maxWidth: .infinity, minHeight: 44)
-                                    .background(Color(UIColor.systemGray5))
-                                    .clipShape(Capsule())
-                            }
-                        }
-                    }
-                    .padding()
-                }
-            }
-        }
+
+    private var sportsView: some View {
+        ExpandingBubbleCloudView(
+            items: sports,
+            onSelect: { sport in self.selectedSport = sport },
+            expanded: nil,
+            onDismiss: { }
+        )
+        .frame(height: 500)
     }
     
     private func fetchSports() {
         isLoading = true
         error = nil
-        let apiKey = "dd06c346e5161e49a8908022ab081232"
+        let apiKey = "3de6c9f8e325a86ac7613b56fd8f85fc"
         let urlString = "https://v3.football.api-sports.io/sports"
         guard let url = URL(string: urlString) else { isLoading = false; return }
         var request = URLRequest(url: url)
@@ -195,20 +141,17 @@ struct SportsBrowserView: View {
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let response = json["response"] as? [[String: Any]] else { error = IdentifiableError(message: "Failed to load sports"); return }
                 sports = response.compactMap { dict in
-                    if let key = dict["key"] as? String, let name = dict["name"] as? String {
-                        return (key: key, name: name)
-                    }
-                    return nil
+                    dict["name"] as? String
                 }
             }
         }.resume()
     }
     
-    private func fetchLeagues(for sportKey: String) {
+    private func fetchLeagues(for sport: String) {
         isLoading = true
         error = nil
-        let apiKey = "dd06c346e5161e49a8908022ab081232"
-        let urlString = "https://v3.football.api-sports.io/leagues?sport=\(sportKey)"
+        let apiKey = "3de6c9f8e325a86ac7613b56fd8f85fc"
+        let urlString = "https://v3.football.api-sports.io/leagues?sport=\(sport)"
         guard let url = URL(string: urlString) else { isLoading = false; return }
         var request = URLRequest(url: url)
         request.setValue(apiKey, forHTTPHeaderField: "x-apisports-key")
@@ -220,10 +163,8 @@ struct SportsBrowserView: View {
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let response = json["response"] as? [[String: Any]] else { error = IdentifiableError(message: "Failed to load leagues"); return }
                 leagues = response.compactMap { dict in
-                    if let league = dict["league"] as? [String: Any],
-                       let id = league["id"] as? Int,
-                       let name = league["name"] as? String {
-                        return (id: id, name: name)
+                    if let league = dict["league"] as? [String: Any], let name = league["name"] as? String {
+                        return name
                     }
                     return nil
                 }
@@ -231,11 +172,11 @@ struct SportsBrowserView: View {
         }.resume()
     }
     
-    private func fetchTeams(for leagueID: Int, sportKey: String) {
+    private func fetchTeams(for league: String) {
         isLoading = true
         error = nil
-        let apiKey = "dd06c346e5161e49a8908022ab081232"
-        let urlString = "https://v3.football.api-sports.io/teams?league=\(leagueID)&season=2023"
+        let apiKey = "3de6c9f8e325a86ac7613b56fd8f85fc"
+        let urlString = "https://v3.football.api-sports.io/teams?league=\(league)&season=2023"
         guard let url = URL(string: urlString) else { isLoading = false; return }
         var request = URLRequest(url: url)
         request.setValue(apiKey, forHTTPHeaderField: "x-apisports-key")
@@ -247,8 +188,7 @@ struct SportsBrowserView: View {
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let response = json["response"] as? [[String: Any]] else { error = IdentifiableError(message: "Failed to load teams"); return }
                 teams = response.compactMap { dict in
-                    if let team = dict["team"] as? [String: Any],
-                       let name = team["name"] as? String {
+                    if let team = dict["team"] as? [String: Any], let name = team["name"] as? String {
                         return FavoriteTeam(name: name)
                     }
                     return nil
@@ -257,23 +197,25 @@ struct SportsBrowserView: View {
         }.resume()
     }
     
-    private func addTeamToFavorites(sport: String, team: FavoriteTeam) {
+    private func addTeamToFavorites(sport: String, team: String) {
+        let favTeam = FavoriteTeam(name: team)
         if let index = viewModel.favoriteSports.firstIndex(where: { $0.name == sport }) {
-            if !viewModel.favoriteSports[index].teams.contains(team) {
-                viewModel.favoriteSports[index].teams.append(team)
+            if !viewModel.favoriteSports[index].teams.contains(favTeam) {
+                viewModel.favoriteSports[index].teams.append(favTeam)
             }
         } else {
-            viewModel.favoriteSports.append(FavoriteSport(name: sport, teams: [team]))
+            viewModel.favoriteSports.append(FavoriteSport(name: sport, teams: [favTeam]))
         }
     }
     
-    private func removeSport(_ sport: FavoriteSport) {
-        viewModel.favoriteSports.removeAll { $0.id == sport.id }
+    private func removeSport(_ sport: String) {
+        viewModel.favoriteSports.removeAll { $0.name == sport }
     }
     
-    private func removeTeam(sport: FavoriteSport, team: FavoriteTeam) {
-        if let index = viewModel.favoriteSports.firstIndex(where: { $0.id == sport.id }) {
-            viewModel.favoriteSports[index].teams.removeAll { $0.id == team.id }
+    private func removeTeam(sport: String, team: String) {
+        let favTeam = FavoriteTeam(name: team)
+        if let index = viewModel.favoriteSports.firstIndex(where: { $0.name == sport }) {
+            viewModel.favoriteSports[index].teams.removeAll { $0 == favTeam }
             if viewModel.favoriteSports[index].teams.isEmpty {
                 viewModel.favoriteSports.remove(at: index)
             }
@@ -288,14 +230,13 @@ struct IdentifiableError: Identifiable {
 
 struct ExpandingBubbleCloudView: View {
     let items: [String]
-    let childMap: [String: [String]]
     let onSelect: (String) -> Void
     let expanded: String?
     let onDismiss: () -> Void
     
     var body: some View {
         ZStack {
-            if let expanded = expanded, let children = childMap[expanded] {
+            if let expanded = expanded {
                 // Dimmed background
                 Color.black.opacity(0.3)
                     .ignoresSafeArea()
@@ -308,27 +249,11 @@ struct ExpandingBubbleCloudView: View {
                     onTap: {}
                 )
                 .position(x: UIScreen.main.bounds.width/2, y: 200)
-                // Child bubbles
-                let enumerated = Array(children.enumerated())
-                ForEach(enumerated, id: \.0) { idx, child in
-                    let angle = Double(idx) / Double(children.count) * 2 * .pi
-                    let radius: CGFloat = 120
-                    let x = cos(angle) * radius + UIScreen.main.bounds.width/2
-                    let y = sin(angle) * radius + 200
-                    BubbleView(
-                        label: child,
-                        isSelected: false,
-                        size: 70,
-                        onTap: {}
-                    )
-                    .position(x: x, y: y)
-                    .transition(.scale)
-                }
             } else {
                 GeometryReader { geo in
                     ZStack {
-                        let enumerated = Array(items.enumerated())
-                        ForEach(enumerated, id: \.0) { idx, item in
+                        ForEach(0..<items.count, id: \.self) { idx in
+                            let item = items[idx]
                             let angle = Double(idx) / Double(items.count) * 2 * .pi
                             let radius = min(geo.size.width, geo.size.height) / 2.5
                             let x = cos(angle) * radius + geo.size.width/2
@@ -366,6 +291,7 @@ struct BubbleView: View {
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                         .padding(8)
+
                 )
                 .scaleEffect(isSelected ? 1.15 : 1.0)
                 .shadow(radius: isSelected ? 10 : 4)
@@ -373,4 +299,31 @@ struct BubbleView: View {
         }
         .buttonStyle(.plain)
     }
-} 
+}
+
+private struct FavoriteSportView: View {
+    let sport: FavoriteSport
+    let removeSport: () -> Void
+    let removeTeam: (FavoriteTeam) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(sport.name).bold()
+                Spacer()
+                Button(action: { removeSport() }) {
+                    Image(systemName: "trash").foregroundColor(.red)
+                }
+            }
+            ForEach(sport.teams) { team in
+                HStack {
+                    Text(team.name)
+                    Spacer()
+                    Button(action: { removeTeam(team) }) {
+                        Image(systemName: "minus.circle").foregroundColor(.red)
+                    }
+                }
+            }
+        }
+    }
+}
