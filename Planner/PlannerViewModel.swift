@@ -183,59 +183,87 @@ class PlannerViewModel: ObservableObject {
     
     // MARK: - Sports API
     func fetchSportsSchedule(for date: Date, completion: @escaping ([TimelineItem]) -> Void) {
-        guard !favoriteSports.isEmpty else {
+        guard !favoriteSports.isEmpty && showSportsSchedule else {
             completion([])
             return
         }
-        let apiKey = "dd06c346e5161e49a8908022ab081232"
-        let dateString = ISO8601DateFormatter().string(from: date).prefix(10)
-        var teams: [String] = []
-        for sport in favoriteSports {
-            for team in sport.teams {
-                teams.append(team.name)
-            }
-        }
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let dateString = dateFormatter.string(from: date)
+        
         var allMatches: [TimelineItem] = []
         let group = DispatchGroup()
-        for team in teams {
-            group.enter()
-            let urlString = "https://v3.football.api-sports.io/fixtures?search=\(team)&date=\(dateString)"
-            guard let url = URL(string: urlString) else { group.leave(); continue }
-            var request = URLRequest(url: url)
-            request.setValue(apiKey, forHTTPHeaderField: "x-apisports-key")
-            URLSession.shared.dataTask(with: request) { data, response, error in
-                defer { group.leave() }
-                guard let data = data, error == nil else { return }
-                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-                let responseArr = json?["response"] as? [[String: Any]] ?? []
-                for match in responseArr {
-                    let fixture = match["fixture"] as? [String: Any]
-                    let timestamp = fixture?["timestamp"] as? TimeInterval
-                    let teamsDict = match["teams"] as? [String: Any]
-                    let home = teamsDict?["home"] as? [String: Any]
-                    let away = teamsDict?["away"] as? [String: Any]
-                    let homeName = home?["name"] as? String
-                    let awayName = away?["name"] as? String
-                    if let timestamp, let homeName, let awayName {
-                        let matchDate = Date(timeIntervalSince1970: timestamp)
-                        let item = TimelineItem(
-                            id: UUID(),
-                            title: "\(homeName) vs \(awayName)",
-                            type: .event,
-                            date: date,
-                            isCompleted: false,
-                            notes: "Sports Match",
-                            time: matchDate,
-                            endDate: nil,
-                            location: nil
-                        )
-                        allMatches.append(item)
-                    }
+        
+        // For each favorite sport and team
+        for sport in favoriteSports {
+            for team in sport.teams {
+                group.enter()
+                
+                // Use the API to fetch matches for this team on this date
+                let teamName = team.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? team.name
+                let urlString = "https://v3.football.api-sports.io/fixtures?team=&date=\(dateString)&search=\(teamName)"
+                
+                guard let url = URL(string: urlString) else {
+                    group.leave()
+                    continue
                 }
-            }.resume()
+                
+                var request = URLRequest(url: url)
+                request.setValue("3215f5cdc36a0197b86f6090c7666c2d", forHTTPHeaderField: "x-apisports-key")
+                
+                URLSession.shared.dataTask(with: request) { data, response, error in
+                    defer { group.leave() }
+                    
+                    guard let data = data, error == nil else { return }
+                    
+                    do {
+                        if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                           let response = json["response"] as? [[String: Any]] {
+                            
+                            for match in response {
+                                if let fixture = match["fixture"] as? [String: Any],
+                                   let timestamp = fixture["timestamp"] as? TimeInterval,
+                                   let teams = match["teams"] as? [String: Any],
+                                   let home = teams["home"] as? [String: Any],
+                                   let away = teams["away"] as? [String: Any],
+                                   let homeName = home["name"] as? String,
+                                   let awayName = away["name"] as? String {
+                                    
+                                    let matchDate = Date(timeIntervalSince1970: timestamp)
+                                    let matchTime = Calendar.current.date(bySettingHour: Calendar.current.component(.hour, from: matchDate),
+                                                                             minute: Calendar.current.component(.minute, from: matchDate),
+                                                                             second: 0, of: date)
+                                    
+                                    let item = TimelineItem(
+                                        id: UUID(),
+                                        title: "\(sport.name): \(homeName) vs \(awayName)",
+                                        type: .event,
+                                        date: date,
+                                        isCompleted: false,
+                                        notes: "Sports Match",
+                                        time: matchTime,
+                                        endDate: Calendar.current.date(byAdding: .hour, value: 2, to: matchTime ?? date),
+                                        location: nil
+                                    )
+                                    
+                                    DispatchQueue.main.async {
+                                        allMatches.append(item)
+                                    }
+                                }
+                            }
+                        }
+                    } catch {
+                        print("Error parsing match data: \(error)")
+                    }
+                }.resume()
+            }
         }
+        
         group.notify(queue: .main) {
-            completion(allMatches)
+            // Sort matches by time
+            let sortedMatches = allMatches.sorted { ($0.time ?? $0.date) < ($1.time ?? $1.date) }
+            completion(sortedMatches)
         }
     }
     

@@ -60,6 +60,8 @@ public enum Weekday: Int, CaseIterable {
     }
 }
 
+// Keep only one definition of each model
+// If these are already defined elsewhere in the file, remove these duplicates
 public struct FavoriteSport: Codable, Hashable, Identifiable {
     public var id: String { name }
     public let name: String

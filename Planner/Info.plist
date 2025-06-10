@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>API_SPORTS_KEY</key>
+	<string>3215f5cdc36a0197b86f6090c7666c2d</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>We need calendar access to manage your events and tasks</string>
 	<key>NSUserNotificationsUsageDescription</key>

@@ -11,7 +11,7 @@ struct SportsSelectorView: View {
     @State private var isLoadingTeams = false
     @State private var error: String? = nil
     
-    let availableSports = ["Football"] // You can expand this and add API support for more
+    let availableSports = ["Football"] 
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -115,7 +115,7 @@ struct SportsSelectorView: View {
         guard sport == "Football" else { leagues = []; return }
         isLoadingLeagues = true
         error = nil
-        let apiKey = "dd06c346e5161e49a8908022ab081232"
+        let apiKey = "3215f5cdc36a0197b86f6090c7666c2d"
         let urlString = "https://v3.football.api-sports.io/leagues"
         guard let url = URL(string: urlString) else { leagues = []; isLoadingLeagues = false; return }
         var request = URLRequest(url: url)
@@ -142,7 +142,7 @@ struct SportsSelectorView: View {
     private func fetchTeams(for leagueID: Int) {
         isLoadingTeams = true
         error = nil
-        let apiKey = "dd06c346e5161e49a8908022ab081232"
+        let apiKey = "3215f5cdc36a0197b86f6090c7666c2d"
         let urlString = "https://v3.football.api-sports.io/teams?league=\(leagueID)&season=2023"
         guard let url = URL(string: urlString) else { teams = []; isLoadingTeams = false; return }
         var request = URLRequest(url: url)

@@ -1,7 +1,14 @@
 import SwiftUI
+import Foundation
+import UIKit
+
+struct IdentifiableError: Identifiable {
+    let id = UUID()
+    let message: String
+}
 
 struct SportsBrowserView: View {
-    @StateObject var viewModel: PlannerViewModel
+    @ObservedObject var viewModel: PlannerViewModel
     @Binding var isPresented: Bool
     @State private var sports: [String] = []
     @State private var leagues: [String] = []
@@ -10,319 +17,346 @@ struct SportsBrowserView: View {
     @State private var selectedLeague: String? = nil
     @State private var isLoading = false
     @State private var error: IdentifiableError? = nil
-    @State private var navLevel: Int = 0 // 0: sports, 1: leagues, 2: teams
-    @State private var staticSports: [String] = [
-        "Football", "Basketball", "Tennis", "Cricket", "Baseball", "Hockey", "Rugby", "Golf", "Boxing", "Cycling", "F1", "MMA", "Volleyball", "Table Tennis"
-    ]
-    @State private var selectedStaticSport: String? = nil
-    @State private var staticLeagues: [String: [String]] = [
-        "Football": ["Premier League", "La Liga", "Serie A", "Bundesliga", "Ligue 1"],
-        "Basketball": ["NBA", "EuroLeague", "NBL"],
-        "Tennis": ["ATP", "WTA"],
-        "Cricket": ["IPL", "BBL", "CPL"],
-        "Baseball": ["MLB", "NPB"],
-        "Hockey": ["NHL", "KHL"],
-        "Rugby": ["Super Rugby", "Premiership"],
-        "Golf": ["PGA Tour", "European Tour"],
-        "Boxing": ["WBC", "WBA"],
-        "Cycling": ["Tour de France", "Giro d'Italia"],
-        "F1": ["Formula 1"],
-        "MMA": ["UFC", "Bellator"],
-        "Volleyball": ["FIVB"],
-        "Table Tennis": ["ITTF"]
+    @State private var showNationalTeams = false
+    
+    // Sport-specific national teams
+    private let nationalTeams: [String: [String]] = [
+        "Football": ["England", "France", "Germany", "Spain", "Italy", "Brazil", "Argentina", "Portugal", "Netherlands"],
+        "Basketball": ["USA", "Spain", "Australia", "France", "Serbia", "Argentina"],
+        "Tennis": [], // Tennis doesn't have national teams in the same way
+        "Cricket": ["India", "Australia", "England", "New Zealand", "Pakistan", "South Africa"],
+        "Baseball": ["USA", "Japan", "Dominican Republic", "Cuba", "South Korea", "Mexico"]
     ]
     
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                headerView
-                Group { dynamicContentView }
-                Divider().padding(.vertical)
-                favoritesSection
-                Spacer()
-            }
-            .onAppear(perform: fetchSports)
-            .alert(item: $error) { err in
-                Alert(title: Text("Error"), message: Text(err.message), dismissButton: .default(Text("OK")))
-            }
-        }
-    }
-    
-    private var headerView: some View {
-        HStack {
-            Button("Close") { isPresented = false }
+                // Header with close button and title
+                HStack {
+                    Button("Close") { isPresented = false }
+                    Spacer()
+                    Text("Sports Browser").font(.headline)
+                    Spacer()
+                    Button("") { }.opacity(0) // For balance
+                }
                 .padding()
-            Spacer()
-        }
-    }
-    
-    private var favoritesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Your Favorites").font(.headline)
-            if viewModel.favoriteSports.isEmpty {
-                Text("No favorites yet.").foregroundColor(.secondary)
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(viewModel.favoriteSports) { sport in
-                            FavoriteSportView(
-                                sport: sport,
-                                removeSport: { removeSport(sport.name) },
-                                removeTeam: { team in removeTeam(sport: sport.name, team: team.name) }
-                            )
+                .background(Color(UIColor.systemBackground))
+                
+                if isLoading {
+                    Spacer()
+                    ProgressView("Loading...")
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            // Sports section
+                            VStack(alignment: .leading) {
+                                Text("Select a Sport")
+                                    .font(.headline)
+                                    .padding(.horizontal)
+                                
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 10) {
+                                        ForEach(["Football", "Basketball", "Tennis", "Cricket", "Baseball"], id: \.self) { sport in
+                                            Button(action: {
+                                                selectedSport = sport
+                                                selectedLeague = nil
+                                                teams = []
+                                                showNationalTeams = false
+                                                fetchLeagues(for: sport)
+                                            }) {
+                                                Text(sport)
+                                                    .padding(.horizontal, 16)
+                                                    .padding(.vertical, 8)
+                                                    .background(selectedSport == sport ? Color.blue : Color.gray.opacity(0.2))
+                                                    .foregroundColor(selectedSport == sport ? .white : .primary)
+                                                    .cornerRadius(20)
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal)
+                                }
+                            }
+                            
+                            // Leagues section
+                            if let sport = selectedSport, !leagues.isEmpty {
+                                VStack(alignment: .leading) {
+                                    Text("Select a League")
+                                        .font(.headline)
+                                        .padding(.horizontal)
+                                    
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 10) {
+                                            ForEach(leagues, id: \.self) { league in
+                                                Button(action: {
+                                                    selectedLeague = league
+                                                    showNationalTeams = false
+                                                    fetchTeams(for: league, sport: sport)
+                                                }) {
+                                                    Text(league)
+                                                        .padding(.horizontal, 16)
+                                                        .padding(.vertical, 8)
+                                                        .background(selectedLeague == league ? Color.green : Color.gray.opacity(0.2))
+                                                        .foregroundColor(selectedLeague == league ? .white : .primary)
+                                                        .cornerRadius(20)
+                                                }
+                                            }
+                                            
+                                            // National Teams button
+                                            if let nationalTeamsForSport = nationalTeams[sport], !nationalTeamsForSport.isEmpty {
+                                                Button(action: {
+                                                    selectedLeague = nil
+                                                    showNationalTeams = true
+                                                    teams = nationalTeamsForSport.map { FavoriteTeam(name: $0) }
+                                                }) {
+                                                    Text("National Teams")
+                                                        .padding(.horizontal, 16)
+                                                        .padding(.vertical, 8)
+                                                        .background(showNationalTeams ? Color.purple : Color.gray.opacity(0.2))
+                                                        .foregroundColor(showNationalTeams ? .white : .primary)
+                                                        .cornerRadius(20)
+                                                }
+                                            }
+                                        }
+                                        .padding(.horizontal)
+                                    }
+                                }
+                            }
+                            
+                            // Teams section
+                            if !teams.isEmpty {
+                                VStack(alignment: .leading) {
+                                    Text(showNationalTeams ? "National Teams" : "Club Teams")
+                                        .font(.headline)
+                                        .padding(.horizontal)
+                                    
+                                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150))], spacing: 10) {
+                                        ForEach(teams, id: \.name) { team in
+                                            Button(action: {
+                                                if let sport = selectedSport {
+                                                    addTeamToFavorites(sport: sport, team: team)
+                                                }
+                                            }) {
+                                                Text(team.name)
+                                                    .padding()
+                                                    .frame(minWidth: 150)
+                                                    .background(Color.blue.opacity(0.1))
+                                                    .cornerRadius(10)
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal)
+                                }
+                            }
+                            
+                            // Favorites section
+                            VStack(alignment: .leading) {
+                                Text("Your Favorites")
+                                    .font(.headline)
+                                    .padding(.horizontal)
+                                
+                                if viewModel.favoriteSports.isEmpty {
+                                    Text("No favorites added yet")
+                                        .foregroundColor(.secondary)
+                                        .padding(.horizontal)
+                                } else {
+                                    ForEach(viewModel.favoriteSports) { sport in
+                                        VStack(alignment: .leading, spacing: 5) {
+                                            HStack {
+                                                Text(sport.name)
+                                                    .font(.subheadline)
+                                                    .bold()
+                                                Spacer()
+                                                Button(action: { removeSport(sport.name) }) {
+                                                    Image(systemName: "trash")
+                                                        .foregroundColor(.red)
+                                                }
+                                            }
+                                            
+                                            ScrollView(.horizontal, showsIndicators: false) {
+                                                HStack {
+                                                    ForEach(sport.teams) { team in
+                                                        HStack {
+                                                            Text(team.name)
+                                                                .font(.caption)
+                                                            Button(action: { removeTeam(sport: sport.name, team: team.name) }) {
+                                                                Image(systemName: "xmark.circle.fill")
+                                                                    .font(.caption)
+                                                                    .foregroundColor(.red)
+                                                            }
+                                                        }
+                                                        .padding(.horizontal, 8)
+                                                        .padding(.vertical, 4)
+                                                        .background(Color.gray.opacity(0.1))
+                                                        .cornerRadius(12)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        .padding()
+                                        .background(Color.gray.opacity(0.05))
+                                        .cornerRadius(10)
+                                    }
+                                }
+                            }
+                            .padding(.top)
                         }
+                        .padding(.vertical)
                     }
-                    .padding(.horizontal)
                 }
             }
-        }
-    }
-    
-    @ViewBuilder
-    private var dynamicContentView: some View {
-        Group {
-            if selectedSport != nil {
-                leagueOrTeamView
-            } else if !sports.isEmpty {
-                sportsView
-            } else {
-                EmptyView()
+            .alert(item: $error) { error in
+                Alert(title: Text("Error"), message: Text(error.message), dismissButton: .default(Text("OK")))
             }
         }
-        if isLoading {
-            ProgressView().padding()
-        }
-    }
-
-    @ViewBuilder
-    private var leagueOrTeamView: some View {
-        if selectedLeague != nil {
-            ExpandingBubbleCloudView(
-                items: teams.map { $0.name },
-                onSelect: { _ in },
-                expanded: nil,
-                onDismiss: { self.selectedLeague = nil }
-            )
-            .frame(height: 500)
-        } else {
-            ExpandingBubbleCloudView(
-                items: leagues,
-                onSelect: { league in self.selectedLeague = league },
-                expanded: nil,
-                onDismiss: { self.selectedSport = nil }
-            )
-            .frame(height: 500)
-        }
-    }
-
-    private var sportsView: some View {
-        ExpandingBubbleCloudView(
-            items: sports,
-            onSelect: { sport in self.selectedSport = sport },
-            expanded: nil,
-            onDismiss: { }
-        )
-        .frame(height: 500)
-    }
-    
-    private func fetchSports() {
-        isLoading = true
-        error = nil
-        let apiKey = "3de6c9f8e325a86ac7613b56fd8f85fc"
-        let urlString = "https://v3.football.api-sports.io/sports"
-        guard let url = URL(string: urlString) else { isLoading = false; return }
-        var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "x-apisports-key")
-        URLSession.shared.dataTask(with: request) { data, _, err in
-            DispatchQueue.main.async {
-                isLoading = false
-                if let err = err { error = IdentifiableError(message: err.localizedDescription); return }
-                guard let data = data,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let response = json["response"] as? [[String: Any]] else { error = IdentifiableError(message: "Failed to load sports"); return }
-                sports = response.compactMap { dict in
-                    dict["name"] as? String
-                }
+        .onAppear {
+            if selectedSport == nil && !viewModel.favoriteSports.isEmpty {
+                // Pre-select the first sport if user has favorites
+                selectedSport = viewModel.favoriteSports[0].name
+                fetchLeagues(for: selectedSport!)
             }
-        }.resume()
+        }
     }
     
     private func fetchLeagues(for sport: String) {
         isLoading = true
-        error = nil
-        let apiKey = "3de6c9f8e325a86ac7613b56fd8f85fc"
-        let urlString = "https://v3.football.api-sports.io/leagues?sport=\(sport)"
-        guard let url = URL(string: urlString) else { isLoading = false; return }
-        var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "x-apisports-key")
-        URLSession.shared.dataTask(with: request) { data, _, err in
-            DispatchQueue.main.async {
-                isLoading = false
-                if let err = err { error = IdentifiableError(message: err.localizedDescription); return }
-                guard let data = data,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let response = json["response"] as? [[String: Any]] else { error = IdentifiableError(message: "Failed to load leagues"); return }
-                leagues = response.compactMap { dict in
-                    if let league = dict["league"] as? [String: Any], let name = league["name"] as? String {
-                        return name
-                    }
-                    return nil
-                }
-            }
-        }.resume()
+        
+        // For simplicity, using static leagues for now
+        // In a real app, you would call an API here
+        switch sport {
+        case "Football":
+            leagues = ["Premier League", "La Liga", "Serie A", "Bundesliga", "Ligue 1"]
+        case "Basketball":
+            leagues = ["NBA", "EuroLeague", "NBL"]
+        case "Tennis":
+            leagues = ["ATP", "WTA", "Grand Slams"]
+        case "Cricket":
+            leagues = ["IPL", "BBL", "CPL", "The Hundred"]
+        case "Baseball":
+            leagues = ["MLB", "NPB", "KBO"]
+        default:
+            leagues = []
+        }
+        
+        isLoading = false
     }
     
-    private func fetchTeams(for league: String) {
+    private func fetchTeams(for league: String, sport: String) {
         isLoading = true
-        error = nil
-        let apiKey = "3de6c9f8e325a86ac7613b56fd8f85fc"
-        let urlString = "https://v3.football.api-sports.io/teams?league=\(league)&season=2023"
-        guard let url = URL(string: urlString) else { isLoading = false; return }
-        var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "x-apisports-key")
-        URLSession.shared.dataTask(with: request) { data, _, err in
-            DispatchQueue.main.async {
-                isLoading = false
-                if let err = err { error = IdentifiableError(message: err.localizedDescription); return }
-                guard let data = data,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let response = json["response"] as? [[String: Any]] else { error = IdentifiableError(message: "Failed to load teams"); return }
-                teams = response.compactMap { dict in
-                    if let team = dict["team"] as? [String: Any], let name = team["name"] as? String {
-                        return FavoriteTeam(name: name)
-                    }
-                    return nil
-                }
+        teams = []
+        
+        // For football, we can use real teams
+        if sport == "Football" {
+            switch league {
+            case "Premier League":
+                teams = [
+                    FavoriteTeam(name: "Manchester United"),
+                    FavoriteTeam(name: "Liverpool"),
+                    FavoriteTeam(name: "Chelsea"),
+                    FavoriteTeam(name: "Arsenal"),
+                    FavoriteTeam(name: "Manchester City"),
+                    FavoriteTeam(name: "Tottenham Hotspur"),
+                    FavoriteTeam(name: "Leicester City"),
+                    FavoriteTeam(name: "West Ham United")
+                ]
+            case "La Liga":
+                teams = [
+                    FavoriteTeam(name: "Real Madrid"),
+                    FavoriteTeam(name: "Barcelona"),
+                    FavoriteTeam(name: "Atletico Madrid"),
+                    FavoriteTeam(name: "Sevilla"),
+                    FavoriteTeam(name: "Valencia"),
+                    FavoriteTeam(name: "Villarreal")
+                ]
+            case "Serie A":
+                teams = [
+                    FavoriteTeam(name: "Juventus"),
+                    FavoriteTeam(name: "Inter Milan"),
+                    FavoriteTeam(name: "AC Milan"),
+                    FavoriteTeam(name: "Napoli"),
+                    FavoriteTeam(name: "Roma"),
+                    FavoriteTeam(name: "Lazio")
+                ]
+            case "Bundesliga":
+                teams = [
+                    FavoriteTeam(name: "Bayern Munich"),
+                    FavoriteTeam(name: "Borussia Dortmund"),
+                    FavoriteTeam(name: "RB Leipzig"),
+                    FavoriteTeam(name: "Bayer Leverkusen"),
+                    FavoriteTeam(name: "Eintracht Frankfurt")
+                ]
+            case "Ligue 1":
+                teams = [
+                    FavoriteTeam(name: "Paris Saint-Germain"),
+                    FavoriteTeam(name: "Marseille"),
+                    FavoriteTeam(name: "Lyon"),
+                    FavoriteTeam(name: "Monaco"),
+                    FavoriteTeam(name: "Lille")
+                ]
+            default:
+                teams = []
             }
-        }.resume()
-    }
-    
-    private func addTeamToFavorites(sport: String, team: String) {
-        let favTeam = FavoriteTeam(name: team)
-        if let index = viewModel.favoriteSports.firstIndex(where: { $0.name == sport }) {
-            if !viewModel.favoriteSports[index].teams.contains(favTeam) {
-                viewModel.favoriteSports[index].teams.append(favTeam)
+        } else if sport == "Basketball" {
+            switch league {
+            case "NBA":
+                teams = [
+                    FavoriteTeam(name: "Los Angeles Lakers"),
+                    FavoriteTeam(name: "Boston Celtics"),
+                    FavoriteTeam(name: "Golden State Warriors"),
+                    FavoriteTeam(name: "Chicago Bulls"),
+                    FavoriteTeam(name: "Miami Heat")
+                ]
+            case "EuroLeague":
+                teams = [
+                    FavoriteTeam(name: "Real Madrid"),
+                    FavoriteTeam(name: "Barcelona"),
+                    FavoriteTeam(name: "CSKA Moscow"),
+                    FavoriteTeam(name: "Fenerbahçe")
+                ]
+            default:
+                teams = []
             }
         } else {
-            viewModel.favoriteSports.append(FavoriteSport(name: sport, teams: [favTeam]))
+            // For other sports, use generic team names for now
+            teams = [
+                FavoriteTeam(name: "\(league) Team 1"),
+                FavoriteTeam(name: "\(league) Team 2"),
+                FavoriteTeam(name: "\(league) Team 3"),
+                FavoriteTeam(name: "\(league) Team 4")
+            ]
         }
+        
+        isLoading = false
     }
     
-    private func removeSport(_ sport: String) {
-        viewModel.favoriteSports.removeAll { $0.name == sport }
+    private func addTeamToFavorites(sport: String, team: FavoriteTeam) {
+        // Check if this sport already exists in favorites
+        if let index = viewModel.favoriteSports.firstIndex(where: { $0.name == sport }) {
+            // Check if this team is already in favorites
+            if !viewModel.favoriteSports[index].teams.contains(where: { $0.name == team.name }) {
+                viewModel.favoriteSports[index].teams.append(team)
+            }
+        } else {
+            // Add new sport with this team
+            viewModel.favoriteSports.append(FavoriteSport(name: sport, teams: [team]))
+        }
+        
+        // Show confirmation to the user
+        let impactGenerator = UIImpactFeedbackGenerator(style: .medium)
+        impactGenerator.impactOccurred()
+    }
+    
+    private func removeSport(_ sportName: String) {
+        viewModel.favoriteSports.removeAll { $0.name == sportName }
     }
     
     private func removeTeam(sport: String, team: String) {
-        let favTeam = FavoriteTeam(name: team)
-        if let index = viewModel.favoriteSports.firstIndex(where: { $0.name == sport }) {
-            viewModel.favoriteSports[index].teams.removeAll { $0 == favTeam }
-            if viewModel.favoriteSports[index].teams.isEmpty {
-                viewModel.favoriteSports.remove(at: index)
-            }
-        }
-    }
-}
-
-struct IdentifiableError: Identifiable {
-    let id = UUID()
-    let message: String
-}
-
-struct ExpandingBubbleCloudView: View {
-    let items: [String]
-    let onSelect: (String) -> Void
-    let expanded: String?
-    let onDismiss: () -> Void
-    
-    var body: some View {
-        ZStack {
-            if let expanded = expanded {
-                // Dimmed background
-                Color.black.opacity(0.3)
-                    .ignoresSafeArea()
-                    .onTapGesture { onDismiss() }
-                // Expanded parent bubble
-                BubbleView(
-                    label: expanded,
-                    isSelected: true,
-                    size: 160,
-                    onTap: {}
-                )
-                .position(x: UIScreen.main.bounds.width/2, y: 200)
-            } else {
-                GeometryReader { geo in
-                    ZStack {
-                        ForEach(0..<items.count, id: \.self) { idx in
-                            let item = items[idx]
-                            let angle = Double(idx) / Double(items.count) * 2 * .pi
-                            let radius = min(geo.size.width, geo.size.height) / 2.5
-                            let x = cos(angle) * radius + geo.size.width/2
-                            let y = sin(angle) * radius + geo.size.height/2
-                            BubbleView(
-                                label: item,
-                                isSelected: false,
-                                size: CGFloat(80 + (idx % 3) * 20),
-                                onTap: { onSelect(item) }
-                            )
-                            .position(x: x, y: y)
-                        }
-                    }
-                }
-            }
-        }
-        .animation(.spring(), value: expanded)
-    }
-}
-
-struct BubbleView: View {
-    let label: String
-    let isSelected: Bool
-    let size: CGFloat
-    let onTap: () -> Void
-    
-    var body: some View {
-        Button(action: onTap) {
-            Circle()
-                .fill(isSelected ? Color.accentColor : Color.pink.opacity(0.8))
-                .frame(width: size, height: size)
-                .overlay(
-                    Text(label)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(8)
-
-                )
-                .scaleEffect(isSelected ? 1.15 : 1.0)
-                .shadow(radius: isSelected ? 10 : 4)
-                .animation(.spring(), value: isSelected)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct FavoriteSportView: View {
-    let sport: FavoriteSport
-    let removeSport: () -> Void
-    let removeTeam: (FavoriteTeam) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(sport.name).bold()
-                Spacer()
-                Button(action: { removeSport() }) {
-                    Image(systemName: "trash").foregroundColor(.red)
-                }
-            }
-            ForEach(sport.teams) { team in
-                HStack {
-                    Text(team.name)
-                    Spacer()
-                    Button(action: { removeTeam(team) }) {
-                        Image(systemName: "minus.circle").foregroundColor(.red)
-                    }
-                }
+        if let sportIndex = viewModel.favoriteSports.firstIndex(where: { $0.name == sport }) {
+            viewModel.favoriteSports[sportIndex].teams.removeAll { $0.name == team }
+            
+            // If no teams left, remove the sport too
+            if viewModel.favoriteSports[sportIndex].teams.isEmpty {
+                viewModel.favoriteSports.remove(at: sportIndex)
             }
         }
     }

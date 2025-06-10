@@ -103,7 +103,7 @@ struct SportsPreferencesView: View {
     private func searchTeams(query: String, sport: String) async {
         // Only Football is supported for now
         guard sport == "Football" else { searchResults = []; isSearching = false; return }
-        let apiKey = "dd06c346e5161e49a8908022ab081232"
+        let apiKey = "3215f5cdc36a0197b86f6090c7666c2d"
         let urlString = "https://v3.football.api-sports.io/teams?search=\(query)"
         guard let url = URL(string: urlString) else { searchResults = []; isSearching = false; return }
         var request = URLRequest(url: url)
