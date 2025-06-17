@@ -17,10 +17,22 @@ struct SportsScheduleView: View {
                     .foregroundColor(.red)
                     .padding(.vertical, 4)
             } else if schedule.isEmpty {
-                Text("No upcoming matches found. The free API plan only allows access to matches within 3 days of today.")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                    .padding(.vertical, 4)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("No upcoming games found for your favorite teams.")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                    
+                    if viewModel.favoriteSports.isEmpty {
+                        Text("Add favorite teams in Settings to see their schedule.")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Try selecting different teams or check back later.")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
             } else {
                 ForEach(schedule) { match in
                     HStack {

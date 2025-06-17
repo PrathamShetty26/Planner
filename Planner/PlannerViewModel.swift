@@ -339,6 +339,10 @@ class PlannerViewModel: ObservableObject {
     private func fetchTheSportsDBSchedule(sport: String, favoriteTeams: [FavoriteTeam], completion: @escaping ([TimelineItem]) -> Void) {
         let endpoint = SportsAPIEndpoint.theSportsDB(sport: sport)
         
+        // Create a list of lowercase team names for easier comparison
+        let favoriteTeamNames = favoriteTeams.map { $0.name.lowercased() }
+        print("Looking for \(sport) games with teams: \(favoriteTeamNames.joined(separator: ", "))")
+        
         guard let url = endpoint.buildURL(date: Date()) else {
             print("Invalid URL for TheSportsDB API")
             completion([])
@@ -449,6 +453,10 @@ class PlannerViewModel: ObservableObject {
         
         print("Fetching from MLB API: \(url.absoluteString)")
         
+        // Create a list of lowercase team names for easier comparison
+        let favoriteTeamNames = favoriteTeams.map { $0.name.lowercased() }
+        print("Looking for MLB games with teams: \(favoriteTeamNames.joined(separator: ", "))")
+        
         URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
                 print("MLB API error: \(error.localizedDescription)")
@@ -488,7 +496,8 @@ class PlannerViewModel: ObservableObject {
                             homeName.lowercased().contains(teamName) || 
                             awayName.lowercased().contains(teamName)
                         }
-                        
+
+                        // Only add games that involve the user's favorite teams
                         if isRelevant {
                             // Parse the game date (ISO 8601 format)
                             let dateFormatter = ISO8601DateFormatter()
