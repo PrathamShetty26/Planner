@@ -10,7 +10,7 @@ struct SportsPreferencesView: View {
     @State private var isSearching = false
     @State private var searchTask: Task<Void, Never>? = nil
     
-    let availableSports = ["Football", "Basketball", "Cricket", "Tennis"] // You can expand this
+    let availableSports = ["Football", "Basketball", "Cricket", "Tennis", "Baseball", "Formula 1", "MMA"]
     
     var body: some View {
         NavigationView {
@@ -26,7 +26,7 @@ struct SportsPreferencesView: View {
                 if !selectedSport.isEmpty {
                     Section(header: Text("Search Teams for \(selectedSport)")) {
                         TextField("Search Team Name", text: $teamSearch)
-                            .onChange(of: teamSearch) { newValue in
+                            .onChange(of: teamSearch) { _, newValue in
                                 searchTask?.cancel()
                                 if newValue.count > 1 {
                                     isSearching = true
@@ -103,18 +103,19 @@ struct SportsPreferencesView: View {
     private func searchTeams(query: String, sport: String) async {
         // Only Football is supported for now
         guard sport == "Football" else { searchResults = []; isSearching = false; return }
-        let apiKey = "3215f5cdc36a0197b86f6090c7666c2d"
-        let urlString = "https://v3.football.api-sports.io/teams?search=\(query)"
+        
+        let urlString = "https://api.sportmonks.com/v3/football/teams/search/\(query)"
         guard let url = URL(string: urlString) else { searchResults = []; isSearching = false; return }
+        
         var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "x-apisports-key")
+        request.setValue(APIKeyManager.sportMonkKey, forHTTPHeaderField: "Authorization")
+        
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let response = json["response"] as? [[String: Any]] {
-                let teams: [FavoriteTeam] = response.compactMap { dict in
-                    if let teamDict = dict["team"] as? [String: Any],
-                       let name = teamDict["name"] as? String {
+               let dataObj = json["data"] as? [[String: Any]] {
+                let teams: [FavoriteTeam] = dataObj.compactMap { dict in
+                    if let name = dict["name"] as? String {
                         return FavoriteTeam(name: name)
                     }
                     return nil

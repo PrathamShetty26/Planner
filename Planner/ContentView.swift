@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var combinedItems: [TimelineItem] = []
     @State private var isLoadingSports = false
     @State private var lastRequestID: UUID = UUID()
+    @State private var showingCalendarView = false
     
     var startOfWeek: Date {
         let calendar = Calendar.current
@@ -153,6 +154,21 @@ struct ContentView: View {
                                 ForEach(combinedItems) { item in
                                     TimelineItemView(viewModel: viewModel, item: item)
                                 }
+                                
+                                // Add sports schedule section here
+                                if viewModel.showSportsSchedule && combinedItems.isEmpty {
+                                    Divider()
+                                        .padding(.vertical, 8)
+                                    
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Sports Schedule")
+                                            .font(.headline)
+                                            .foregroundColor(.primary)
+                                        
+                                        SportsScheduleView(viewModel: viewModel)
+                                    }
+                                    .padding(.horizontal, 4)
+                                }
                             }
                             .animation(.easeInOut, value: combinedItems)
                             .padding()
@@ -181,8 +197,8 @@ struct ContentView: View {
                     
                     Spacer()
                     
-                    Button(action: {}) {
-                        Image(systemName: "square.grid.2x2")
+                    Button(action: { showingCalendarView = true }) {
+                        Image(systemName: "calendar")
                             .font(.title2)
                     }
                 }
@@ -195,8 +211,13 @@ struct ContentView: View {
             .sheet(isPresented: $showingSettings) {
                 SettingsView(isPresented: $showingSettings, viewModel: viewModel)
             }
+            .sheet(isPresented: $showingCalendarView) {
+                CalendarView(selectedDate: $selectedDate, isPresented: $showingCalendarView)
+            }
             .onAppear(perform: loadCombinedItems)
-            .onChange(of: selectedDate) { _ in loadCombinedItems() }
+            .onChange(of: selectedDate) { _, _ in 
+                loadCombinedItems() 
+            }
         }
     }
 
@@ -205,11 +226,18 @@ struct ContentView: View {
         let requestID = UUID()
         lastRequestID = requestID
         let date = selectedDate
+        
+        // Debug log
+        print("Loading combined items for date: \(date)")
+        
         viewModel.timelineItemsWithSports(for: date) { items in
             // Only update if this is the latest request
             if lastRequestID == requestID {
-                combinedItems = items
-                isLoadingSports = false
+                print("Received \(items.count) combined items")
+                DispatchQueue.main.async {
+                    self.combinedItems = items
+                    self.isLoadingSports = false
+                }
             }
         }
     }

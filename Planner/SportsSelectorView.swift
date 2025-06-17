@@ -115,22 +115,23 @@ struct SportsSelectorView: View {
         guard sport == "Football" else { leagues = []; return }
         isLoadingLeagues = true
         error = nil
-        let apiKey = "3215f5cdc36a0197b86f6090c7666c2d"
-        let urlString = "https://v3.football.api-sports.io/leagues"
+        
+        let urlString = "https://api.sportmonks.com/v3/football/leagues"
         guard let url = URL(string: urlString) else { leagues = []; isLoadingLeagues = false; return }
+        
         var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "x-apisports-key")
+        request.setValue(APIKeyManager.sportMonkKey, forHTTPHeaderField: "Authorization")
+        
         URLSession.shared.dataTask(with: request) { data, _, err in
             DispatchQueue.main.async {
                 isLoadingLeagues = false
                 if let err = err { error = err.localizedDescription; return }
                 guard let data = data,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let response = json["response"] as? [[String: Any]] else { error = "Failed to load leagues"; return }
-                leagues = response.compactMap { dict in
-                    if let league = dict["league"] as? [String: Any],
-                       let id = league["id"] as? Int,
-                       let name = league["name"] as? String {
+                      let dataObj = json["data"] as? [[String: Any]] else { error = "Failed to load leagues"; return }
+                leagues = dataObj.compactMap { dict in
+                    if let id = dict["id"] as? Int,
+                       let name = dict["name"] as? String {
                         return (id: id, name: name)
                     }
                     return nil
@@ -142,21 +143,22 @@ struct SportsSelectorView: View {
     private func fetchTeams(for leagueID: Int) {
         isLoadingTeams = true
         error = nil
-        let apiKey = "3215f5cdc36a0197b86f6090c7666c2d"
-        let urlString = "https://v3.football.api-sports.io/teams?league=\(leagueID)&season=2023"
+        
+        let urlString = "https://api.sportmonks.com/v3/football/teams?filters[league_id]=\(leagueID)"
         guard let url = URL(string: urlString) else { teams = []; isLoadingTeams = false; return }
+        
         var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "x-apisports-key")
+        request.setValue(APIKeyManager.sportMonkKey, forHTTPHeaderField: "Authorization")
+        
         URLSession.shared.dataTask(with: request) { data, _, err in
             DispatchQueue.main.async {
                 isLoadingTeams = false
                 if let err = err { error = err.localizedDescription; return }
                 guard let data = data,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let response = json["response"] as? [[String: Any]] else { error = "Failed to load teams"; return }
-                teams = response.compactMap { dict in
-                    if let team = dict["team"] as? [String: Any],
-                       let name = team["name"] as? String {
+                      let dataObj = json["data"] as? [[String: Any]] else { error = "Failed to load teams"; return }
+                teams = dataObj.compactMap { dict in
+                    if let name = dict["name"] as? String {
                         return FavoriteTeam(name: name)
                     }
                     return nil
