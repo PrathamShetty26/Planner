@@ -2,6 +2,7 @@ import Foundation
 import EventKit
 import UserNotifications
 import SwiftUI
+import HealthKit
 
 class PlannerViewModel: ObservableObject {
     @Published private(set) var items: [TimelineItem] = []
@@ -17,6 +18,12 @@ class PlannerViewModel: ObservableObject {
     @Published var showSportsSchedule: Bool = false {
         didSet { UserDefaults.standard.set(showSportsSchedule, forKey: "showSportsSchedule") }
     }
+    @Published var healthKitAuthorizationStatus: HKAuthorizationStatus = .notDetermined
+    @Published var steps: Double = 0
+    @Published var activeEnergy: Double = 0
+    @Published var showHealthData: Bool = false {
+        didSet { UserDefaults.standard.set(showHealthData, forKey: "showHealthData") }
+    }
     
     private var eventStore: EKEventStore
     private var hasRequestedCalendarPermission = false
@@ -24,10 +31,13 @@ class PlannerViewModel: ObservableObject {
     private var isInitializingPermissions = false
     private var hasInitializedPermissions = false
     
+    private let healthKitManager = HealthKitManager()
+    
     init() {
         self.eventStore = EKEventStore()
         loadFavoriteSports()
         showSportsSchedule = UserDefaults.standard.bool(forKey: "showSportsSchedule")
+        showHealthData = UserDefaults.standard.bool(forKey: "showHealthData")
         
         // Make sure we're not creating a task that might be causing a loop
         Task {
@@ -37,6 +47,9 @@ class PlannerViewModel: ObservableObject {
                 await initializePermissions()
                 if calendarAccessStatus == .fullAccess {
                     await syncCalendarEvents()
+                }
+                if showHealthData {
+                    await checkInitialHealthKitStatus()
                 }
             }
         }
@@ -138,8 +151,26 @@ class PlannerViewModel: ObservableObject {
     }
     
     @MainActor
+    func fetchHealthData(for date: Date) async {
+        guard showHealthData && healthKitAuthorizationStatus == .sharingAuthorized else { return }
+        
+        do {
+            // Use async let to fetch steps and energy concurrently
+            async let stepsTask = try healthKitManager.fetchStepCount(for: date)
+            async let energyTask = try healthKitManager.fetchActiveEnergy(for: date)
+            
+            self.steps = try await stepsTask
+            self.activeEnergy = try await energyTask
+        } catch {
+            print("Failed to fetch health data: \(error.localizedDescription)")
+            self.steps = 0
+            self.activeEnergy = 0
+        }
+    }
+    
+    @MainActor
     func requestCalendarPermission() async {
-            if #available(iOS 17.0, *) {
+        if #available(iOS 17.0, *) {
             do {
                 let granted = try await eventStore.requestFullAccessToEvents()
                 if granted {
@@ -181,6 +212,19 @@ class PlannerViewModel: ObservableObject {
                     self.permissionErrorMessage = "Please enable Calendar access in Settings"
                 }
             }
+    }
+
+    @MainActor
+    func requestHealthKitPermission() async {
+        do {
+            try await healthKitManager.requestAuthorization()
+            self.healthKitAuthorizationStatus = .sharingAuthorized
+            await self.fetchHealthData(for: Date()) // Fetch for today on success
+        } catch {
+            self.healthKitAuthorizationStatus = .sharingDenied
+            self.permissionErrorMessage = "Please enable Health access in Settings. Error: \(error.localizedDescription)"
+            self.showSettingsPrompt = true
+        }
     }
     
     // Move the static flag outside the function as a class property
@@ -958,6 +1002,14 @@ class PlannerViewModel: ObservableObject {
         
         if calendarAccessStatus == .notDetermined {
             showCalendarPrompt = true
+        }
+    }
+
+    @MainActor
+    private func checkInitialHealthKitStatus() async {
+        healthKitAuthorizationStatus = healthKitManager.healthStore.authorizationStatus(for: HKObjectType.quantityType(forIdentifier: .stepCount)!)
+        if healthKitAuthorizationStatus == .sharingAuthorized {
+            await fetchHealthData(for: Date())
         }
     }
     

@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>We need access to write health data to track your activities.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>We need access to read your health data to display your steps and active energy.</string>
 	<key>SPORTMONK_KEY</key>
 	<string>OAtmtO0BFwRQI4QOy4NzXmGisrwfm8L14MDBwrMG8trKc7luKX4oXeEx9qDK</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>

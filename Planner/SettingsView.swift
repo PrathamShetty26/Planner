@@ -1,6 +1,7 @@
 import SwiftUI
 import EventKit
 import UserNotifications
+import HealthKit
 
 struct SettingsView: View {
     @Binding var isPresented: Bool
@@ -8,6 +9,7 @@ struct SettingsView: View {
     @State private var showCalendarPrompt = false
     @State private var showNotificationPrompt = false
     @State private var showSportsBrowser = false
+    @State private var showHealthPrompt = false
     
     var body: some View {
         NavigationView {
@@ -47,6 +49,28 @@ struct SettingsView: View {
                 Section(header: Text("Display")) {
                     Toggle("Show Completed Items", isOn: $viewModel.showCompletedItems)
                     Toggle("Group by Type", isOn: $viewModel.groupByType)
+                }
+                
+                Section(header: Text("Health")) {
+                    Toggle("Show Health Data", isOn: $viewModel.showHealthData)
+                    
+                    if viewModel.showHealthData {
+                        HStack {
+                            Text("HealthKit Access")
+                            Spacer()
+                            if viewModel.healthKitAuthorizationStatus == .notDetermined {
+                                Button("Enable") { showHealthPrompt = true }
+                            } else if viewModel.healthKitAuthorizationStatus == .sharingAuthorized {
+                                Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                            } else {
+                                Button("Open Settings") {
+                                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                                        UIApplication.shared.open(url)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 
                 Section(header: Text("Sports")) {
@@ -92,6 +116,16 @@ struct SettingsView: View {
                 Button("Cancel", role: .cancel) { }
             } message: {
                 Text("Enable notifications for task reminders?")
+            }
+            .alert("Health Access", isPresented: $showHealthPrompt) {
+                Button("Allow Access") {
+                    Task {
+                        await viewModel.requestHealthKitPermission()
+                    }
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("To display your steps and active energy, Planner needs permission to access your health data.")
             }
             .fullScreenCover(isPresented: $showSportsBrowser) {
                 SportsBrowserView(viewModel: viewModel, isPresented: $showSportsBrowser)

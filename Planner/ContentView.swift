@@ -213,6 +213,7 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingCalendarView) {
                 CalendarView(selectedDate: $selectedDate, isPresented: $showingCalendarView)
+                    .presentationDetents([.medium])
             }
             .onAppear(perform: loadCombinedItems)
             .onChange(of: selectedDate) { _, _ in 
@@ -229,6 +230,10 @@ struct ContentView: View {
         
         // Debug log
         print("Loading combined items for date: \(date)")
+        
+        Task {
+            await viewModel.fetchHealthData(for: date)
+        }
         
         viewModel.timelineItemsWithSports(for: date) { items in
             // Only update if this is the latest request
