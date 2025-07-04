@@ -5,7 +5,7 @@
 	<key>API_KEY</key>
 	<string>AIzaSyAO5_DYNuAI2UOWbbHFdj12Pd5J24W2Dqw</string>
 	<key>GCM_SENDER_ID</key>
-	<string>1007136608153</string>
+	<string></string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
@@ -13,7 +13,7 @@
 	<key>PROJECT_ID</key>
 	<string>planner-62956</string>
 	<key>STORAGE_BUCKET</key>
-	<string>planner-62956.firebasestorage.app</string>
+	<string></string>
 	<key>IS_ADS_ENABLED</key>
 	<false></false>
 	<key>IS_ANALYTICS_ENABLED</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:1007136608153:ios:108b37129136d34354cd08</string>
+	<string></string>
 </dict>
 </plist>
