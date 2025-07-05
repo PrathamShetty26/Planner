@@ -11,7 +11,7 @@ import Foundation
 
 // MARK: - Content View
 struct ContentView: View {
-    @StateObject private var viewModel = PlannerViewModel()
+    @EnvironmentObject var viewModel: PlannerViewModel
     @State private var selectedDate = Date()
     @State private var showingAddSheet = false
     @State private var showingSettings = false
@@ -53,7 +53,7 @@ struct ContentView: View {
                 HStack(alignment: .center, spacing: 16) {
                     Text(shortDayName(from: selectedDate))
                         .font(.system(size: 65, weight: .black))
-                        .foregroundColor(Color(UIColor.darkGray))
+                        .foregroundColor(.primary)
                     
                     if Calendar.current.isDateInToday(selectedDate) {
                         Circle()
@@ -65,11 +65,11 @@ struct ContentView: View {
                     
                     VStack(alignment: .trailing, spacing: 4) {
                         Text(selectedDate.formatted(.dateTime.month().day()))
-                            .font(.system(size: 28, weight: .medium))
-                            .foregroundColor(Color(UIColor.darkGray))
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(.primary)
                         Text(selectedDate.formatted(.dateTime.year()))
                             .font(.system(size: 20, weight: .regular))
-                            .foregroundColor(Color(UIColor.darkGray))
+                            .foregroundColor(.secondary)
                     }
                 }
                 .padding()
@@ -124,6 +124,32 @@ struct ContentView: View {
                     }
                 }
                 .padding(.horizontal)
+                
+                // Health Stats Section
+                if viewModel.showHealthData {
+                    HStack(spacing: 24) {
+                        Spacer()
+                        
+                        Label {
+                            Text(String(format: "%.0f steps", viewModel.steps))
+                        } icon: {
+                            Image(systemName: "figure.walk")
+                                .foregroundColor(.blue)
+                        }
+                        
+                        Label {
+                            Text(String(format: "%.0f kcal", viewModel.activeEnergy))
+                        } icon: {
+                            Image(systemName: "flame.fill")
+                                .foregroundColor(.red)
+                        }
+                        
+                        Spacer()
+                    }
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 8)
+                }
                 
                 // Timeline Section
                 VStack {
@@ -281,4 +307,6 @@ struct WeekDayButton: View {
 
 #Preview {
     ContentView()
+        // The preview needs the viewModel in its environment to work correctly
+        .environmentObject(PlannerViewModel())
 }

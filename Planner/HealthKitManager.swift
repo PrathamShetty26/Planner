@@ -54,13 +54,9 @@ class HealthKitManager {
         return try await withCheckedThrowingContinuation { continuation in
             let query = HKStatisticsQuery(quantityType: quantityType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
                 if let error = error {
-                    // If the error is simply that no data exists for the query, treat it as 0.
-                    if (error as? HKError)?.code == .errorDataNotAvailable {
-                        continuation.resume(returning: 0.0)
-                    } else {
-                        // For all other errors, propagate them.
-                        continuation.resume(throwing: error)
-                    }
+                    // Any non-nil error is a genuine problem. Propagate it.
+                    // The case of "no data found" is handled by the `result` check below; it's not an error.
+                    continuation.resume(throwing: error)
                     return
                 }
                 

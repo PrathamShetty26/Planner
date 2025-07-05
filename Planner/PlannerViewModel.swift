@@ -22,8 +22,24 @@ class PlannerViewModel: ObservableObject {
     @Published var steps: Double = 0
     @Published var activeEnergy: Double = 0
     @Published var showHealthData: Bool = false {
-        didSet { UserDefaults.standard.set(showHealthData, forKey: "showHealthData") }
+        didSet {
+            UserDefaults.standard.set(showHealthData, forKey: "showHealthData")
+            if showHealthData {
+                // When toggled on, check authorization and fetch data if permitted.
+                Task {
+                    await checkInitialHealthKitStatus()
+                }
+            } else {
+                // When toggled off, clear the values.
+                self.steps = 0
+                self.activeEnergy = 0
+            }
+        }
     }
+    
+    // Health Goals
+    let stepGoal: Double = 10000
+    let energyGoal: Double = 500
     
     private var eventStore: EKEventStore
     private var hasRequestedCalendarPermission = false
@@ -217,9 +233,10 @@ class PlannerViewModel: ObservableObject {
     @MainActor
     func requestHealthKitPermission() async {
         do {
+            // This presents the permission sheet to the user.
             try await healthKitManager.requestAuthorization()
-            self.healthKitAuthorizationStatus = .sharingAuthorized
-            await self.fetchHealthData(for: Date()) // Fetch for today on success
+            // After the user responds, we must check the new status to see what they chose.
+            await self.checkInitialHealthKitStatus()
         } catch {
             self.healthKitAuthorizationStatus = .sharingDenied
             self.permissionErrorMessage = "Please enable Health access in Settings. Error: \(error.localizedDescription)"
