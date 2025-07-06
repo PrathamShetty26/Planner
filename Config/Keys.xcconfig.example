@@ -1,0 +1,9 @@
+//
+//  Keys.xcconfig.example
+//  Planner
+//
+//  Created by Pratham Shetty on 05/07/25.
+//
+//  Add your secret keys to a Keys.xcconfig file.
+SPORTMONK_KEY = YOUR_SPORTMONK_API_KEY_HERE
+GOOGLE_API_KEY = YOUR_GOOGLE_API_KEY_HERE
