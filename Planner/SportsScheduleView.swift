@@ -50,21 +50,20 @@ struct SportsScheduleView: View {
                 }
             }
         }
-        .onAppear(perform: loadSchedule)
-    }
-    
-    private func loadSchedule() {
-        isLoading = true
-        
-        // Get today's date
-        let today = Calendar.current.startOfDay(for: Date())
-        
-        // Only look ahead for the next 3 days (free API plan limitation)
-        viewModel.fetchSportsSchedule(for: today) { items in
-            DispatchQueue.main.async {
-                self.schedule = items
-                self.isLoading = false
+        .onAppear {
+            Task {
+                await loadSchedule()
             }
         }
+    }
+    
+    @MainActor
+    private func loadSchedule() async {
+        isLoading = true
+        // Create a local, unwrapped reference to the viewModel to avoid compiler confusion.
+        let localViewModel = self.viewModel
+        let today = Calendar.current.startOfDay(for: Date())
+        schedule = await localViewModel.fetchSportsSchedule(for: today)
+        isLoading = false
     }
 }

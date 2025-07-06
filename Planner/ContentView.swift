@@ -241,35 +241,31 @@ struct ContentView: View {
                 CalendarView(selectedDate: $selectedDate, isPresented: $showingCalendarView)
                     .presentationDetents([.medium])
             }
-            .onAppear(perform: loadCombinedItems)
-            .onChange(of: selectedDate) { _, _ in 
-                loadCombinedItems() 
+            .onAppear {
+                Task { await loadCombinedItems() }
+            }
+            .onChange(of: selectedDate) {
+                Task { await loadCombinedItems() }
             }
         }
     }
 
-    private func loadCombinedItems() {
+    @MainActor
+    private func loadCombinedItems() async {
         isLoadingSports = true
+        // Create a local, unwrapped reference to the viewModel to avoid compiler confusion.
+        let localViewModel = self.viewModel
         let requestID = UUID()
         lastRequestID = requestID
         let date = selectedDate
-        
-        // Debug log
         print("Loading combined items for date: \(date)")
         
-        Task {
-            await viewModel.fetchHealthData(for: date)
-        }
+        await localViewModel.fetchHealthData(for: date)
+        let items = await localViewModel.timelineItemsWithSports(for: date)
         
-        viewModel.timelineItemsWithSports(for: date) { items in
-            // Only update if this is the latest request
-            if lastRequestID == requestID {
-                print("Received \(items.count) combined items")
-                DispatchQueue.main.async {
-                    self.combinedItems = items
-                    self.isLoadingSports = false
-                }
-            }
+        if lastRequestID == requestID {
+            self.combinedItems = items
+            self.isLoadingSports = false
         }
     }
 }

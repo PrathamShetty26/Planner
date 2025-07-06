@@ -16,71 +16,15 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "181"
             endingLineNumber = "181"
-            landmarkName = "fetchHealthData(for:)"
+            landmarkName = "addEvent(title:startDate:endDate:)"
             landmarkType = "7">
             <Locations>
                <Location
-                  uuid = "8B85698E-1B75-4143-B828-B4A265E8F4BE - ef54c5f4de7d7801"
+                  uuid = "8B85698E-1B75-4143-B828-B4A265E8F4BE - 44ae5bb9d0cb204d"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
-                  symbolName = "(1) suspend resume partial function for Planner.PlannerViewModel.fetchHealthData(for: Foundation.Date) async -&gt; ()"
-                  moduleName = "Planner.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/prathamshetty/Documents/Planner/Planner/PlannerViewModel.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "183"
-                  endingLineNumber = "183">
-               </Location>
-               <Location
-                  uuid = "8B85698E-1B75-4143-B828-B4A265E8F4BE - f2c0135583641e02"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "(2) suspend resume partial function for Planner.PlannerViewModel.fetchHealthData(for: Foundation.Date) async -&gt; ()"
-                  moduleName = "Planner.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/prathamshetty/Documents/Planner/Planner/PlannerViewModel.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "183"
-                  endingLineNumber = "183">
-               </Location>
-               <Location
-                  uuid = "8B85698E-1B75-4143-B828-B4A265E8F4BE - 67b2135640cbc03"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "(3) suspend resume partial function for Planner.PlannerViewModel.fetchHealthData(for: Foundation.Date) async -&gt; ()"
-                  moduleName = "Planner.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/prathamshetty/Documents/Planner/Planner/PlannerViewModel.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "183"
-                  endingLineNumber = "183">
-               </Location>
-               <Location
-                  uuid = "8B85698E-1B75-4143-B828-B4A265E8F4BE - 9a7aee650e59a5b0"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "(13) suspend resume partial function for Planner.PlannerViewModel.fetchHealthData(for: Foundation.Date) async -&gt; ()"
-                  moduleName = "Planner.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/prathamshetty/Documents/Planner/Planner/PlannerViewModel.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "183"
-                  endingLineNumber = "183">
-               </Location>
-               <Location
-                  uuid = "8B85698E-1B75-4143-B828-B4A265E8F4BE - 9a7aee650e59a572"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "(13) suspend resume partial function for Planner.PlannerViewModel.fetchHealthData(for: Foundation.Date) async -&gt; ()"
+                  symbolName = "(1) suspend resume partial function for Planner.PlannerViewModel.requestNotificationPermission() async -&gt; ()"
                   moduleName = "Planner.debug.dylib"
                   usesParentBreakpointCondition = "Yes"
                   urlString = "file:///Users/prathamshetty/Documents/Planner/Planner/PlannerViewModel.swift"
@@ -90,11 +34,11 @@
                   endingLineNumber = "181">
                </Location>
                <Location
-                  uuid = "8B85698E-1B75-4143-B828-B4A265E8F4BE - 481f4b2e85a6517e"
+                  uuid = "8B85698E-1B75-4143-B828-B4A265E8F4BE - 27c7c3441f8629b"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
-                  symbolName = "(17) suspend resume partial function for Planner.PlannerViewModel.fetchHealthData(for: Foundation.Date) async -&gt; ()"
+                  symbolName = "Planner.PlannerViewModel.addEvent(title: Swift.String, startDate: Foundation.Date, endDate: Foundation.Date) -&gt; ()"
                   moduleName = "Planner.debug.dylib"
                   usesParentBreakpointCondition = "Yes"
                   urlString = "file:///Users/prathamshetty/Documents/Planner/Planner/PlannerViewModel.swift"
