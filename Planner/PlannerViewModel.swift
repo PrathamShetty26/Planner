@@ -7,6 +7,7 @@ import HealthKit
 class PlannerViewModel: ObservableObject {
     @Published var items: [TimelineItem] = []
     @Published var calendarAccessStatus: EKAuthorizationStatus = .notDetermined
+    @Published var isInitializing = true
     @Published var showCalendarPrompt = false
     @Published var showSettingsPrompt = false
     @Published var permissionErrorMessage: String?
@@ -18,23 +19,25 @@ class PlannerViewModel: ObservableObject {
     @Published var showSportsSchedule: Bool = false {
         didSet { UserDefaults.standard.set(showSportsSchedule, forKey: "showSportsSchedule") }
     }
+    @Published var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
     @Published var healthKitAuthorizationStatus: HKAuthorizationStatus = .notDetermined
     @Published var steps: Double = 0
     @Published var activeEnergy: Double = 0
     @Published var showHealthData: Bool = false {
         didSet {
             UserDefaults.standard.set(showHealthData, forKey: "showHealthData")
-            if showHealthData {
-                // When toggled on, check authorization and fetch data if permitted.
-                Task {
-                    await checkInitialHealthKitStatus()
-                }
-            } else {
-                // When toggled off, clear the values.
-                self.steps = 0
-                self.activeEnergy = 0
+            // When the user toggles this, we just need to re-check our authorization and fetch.
+            // The check function itself will handle clearing values if showHealthData is false or permissions are denied.
+            Task {
+                await self.checkHealthKitAuthorization()
             }
         }
+    }
+    
+    // This property holds the date the user is currently viewing in the UI.
+    // The UI will bind its date selection to this property.
+    @Published var currentlyDisplayedDate: Date = Date() {
+        didSet { Task { await checkHealthKitAuthorization() } }
     }
     
     // Health Goals
@@ -52,23 +55,33 @@ class PlannerViewModel: ObservableObject {
     init() {
         self.eventStore = EKEventStore()
         loadFavoriteSports()
-        showSportsSchedule = UserDefaults.standard.bool(forKey: "showSportsSchedule")
-        showHealthData = UserDefaults.standard.bool(forKey: "showHealthData")
+        // Use the backing property `_propertyName` to set the initial value without triggering the `didSet` observer.
+        // This is the correct way to initialize properties that have side effects in their setters.
+        self._showSportsSchedule = Published(initialValue: UserDefaults.standard.bool(forKey: "showSportsSchedule"))
+        self._showHealthData = Published(initialValue: UserDefaults.standard.bool(forKey: "showHealthData"))
         
         // Make sure we're not creating a task that might be causing a loop
-        Task {
+        // By specifying @MainActor, we ensure all code inside this task runs on the main thread.
+        Task { @MainActor in
             // Only initialize permissions once
             if !hasInitializedPermissions {
                 hasInitializedPermissions = true
-                await initializePermissions()
+                await checkNotificationAuthorization()
+                await checkInitialCalendarStatus()
+                await checkHealthKitAuthorization()
                 if calendarAccessStatus == .fullAccess {
                     await syncCalendarEvents()
                 }
-                if showHealthData {
-                    await checkInitialHealthKitStatus()
-                }
+                // Signal that the initial setup is complete.
+                isInitializing = false
             }
         }
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appWillEnterForeground),
+            name: UIApplication.willEnterForegroundNotification,
+            object: nil
+        )
     }
     
     // MARK: - Public Methods
@@ -133,7 +146,8 @@ class PlannerViewModel: ObservableObject {
         }
     }
     
-    func timelineItems(for date: Date) -> [TimelineItem] {
+    @MainActor
+    public func timelineItems(for date: Date) -> [TimelineItem] {
         let filtered = items.filter { item in
             let sameDay = Calendar.current.isDate(item.date, inSameDayAs: date)
             return showCompletedItems ? sameDay : (sameDay && !item.isCompleted)
@@ -154,24 +168,25 @@ class PlannerViewModel: ObservableObject {
     }
     
     @MainActor
-    private static var hasRequestedNotificationPermissionGlobally = false
-
-    @MainActor
     func requestNotificationPermission() async {
-        // Use the class-level static property instead of a local static variable
-        if !PlannerViewModel.hasRequestedNotificationPermissionGlobally {
-            PlannerViewModel.hasRequestedNotificationPermissionGlobally = true
-            self.hasRequestedNotificationPermission = true
-            
-            do {
-                let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
-                print("Notification permission \(granted ? "granted" : "denied")")
-            } catch {
-                print("Error requesting notification permission: \(error)")
-            }
-        } else {
-            print("Notification permission already requested this session")
+        do {
+            let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+            // After the user responds, update our status.
+            await checkNotificationAuthorization()
+            print("Notification permission request completed. Granted: \(granted)")
+        } catch {
+            print("Error requesting notification permission: \(error)")
         }
+    }
+
+    /// Checks the current notification authorization status and updates the view model's state.
+    @MainActor
+    func checkNotificationAuthorization() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        // This needs to be dispatched to the main actor to avoid publishing changes from a background thread.
+        // The function is already @MainActor, so this is safe.
+        self.notificationAuthorizationStatus = settings.authorizationStatus
+        print("Notification: Initial status is \(settings.authorizationStatus.rawValue)")
     }
     
     // MARK: - Public Convenience Methods for Testing
@@ -206,21 +221,12 @@ class PlannerViewModel: ObservableObject {
     
     // MARK: - Private Methods
     
-    @MainActor
-    private func initializePermissions() async {
-        // Check if we're already initializing to prevent recursive calls
-        if isInitializingPermissions {
-            print("Already initializing permissions, breaking potential loop")
-            return
+    @objc private func appWillEnterForeground() {
+        Task {
+            await checkHealthKitAuthorization()
+            // Also re-sync calendar events when the app comes to the foreground
+            await syncCalendarEvents()
         }
-        
-        isInitializingPermissions = true
-        
-        // Request permissions
-        await requestNotificationPermission()
-        await checkInitialCalendarStatus()
-        
-        isInitializingPermissions = false
     }
     
     @MainActor

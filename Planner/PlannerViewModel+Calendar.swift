@@ -7,13 +7,14 @@ extension PlannerViewModel {
 
     @MainActor
     func requestCalendarPermission() async {
+        // For iOS 17+, this single call requests access for both events and reminders
+        // if the appropriate usage descriptions are in Info.plist.
         if #available(iOS 17.0, *) {
             do {
                 let granted = try await eventStore.requestFullAccessToEvents()
                 if granted {
                     self.calendarAccessStatus = .fullAccess
                     self.permissionErrorMessage = nil
-                    self.eventStore = EKEventStore() // Re-initialize after getting permission
                     await syncCalendarEvents()
                 } else {
                     self.calendarAccessStatus = .denied
@@ -64,12 +65,15 @@ extension PlannerViewModel {
         let startDate = calendar.date(byAdding: .month, value: -1, to: now) ?? now
         let endDate = calendar.date(byAdding: .month, value: 1, to: now) ?? now
         
-        let predicate = eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: nil)
-        let events = eventStore.events(matching: predicate)
+        // The event fetching can block the main thread, causing a freeze.
+        // We perform this work in a detached, background task to keep the UI responsive.
+        let events = await Task.detached {
+            let predicate = self.eventStore.predicateForEvents(withStart: startDate, end: endDate, calendars: nil)
+            return self.eventStore.events(matching: predicate)
+        }.value
         
-        // Convert EKEvents to TimelineItems, storing the unique identifier
-        let newItems = events.map { event -> TimelineItem in
-            // We will add `calendarEventIdentifier` to the TimelineItem struct in the next step
+        // Safely unwrap the optional 'events' array and convert to TimelineItems
+        let newItems = (events ?? []).map { event -> TimelineItem in
             return TimelineItem(
                 id: UUID(),
                 title: event.title,
@@ -78,14 +82,13 @@ extension PlannerViewModel {
                 isCompleted: false,
                 notes: event.notes,
                 time: event.startDate,
-                endDate: event.endDate
-                // calendarEventIdentifier: event.eventIdentifier // This will be added
+                endDate: event.endDate,
+                calendarItemIdentifier: event.eventIdentifier // Link to the original EKEvent
             )
         }
         
         // A more robust sync: remove old calendar events and add the new ones.
-        // This prevents duplicates if an event is changed in the Calendar app.
-        items.removeAll { $0.type == .event } // A simplified removal; we'll make this more robust
+        items.removeAll { $0.type == .event && $0.calendarItemIdentifier != nil }
         items.append(contentsOf: newItems)
     }
 
@@ -105,44 +108,47 @@ extension PlannerViewModel {
         
         do {
             try eventStore.save(event, span: .thisEvent)
-            // After saving, we would update our item with the real calendar identifier
+            // After saving, update our local item with the real calendar identifier
+            if let index = items.firstIndex(where: { $0.id == item.id }) {
+                items[index].calendarItemIdentifier = event.eventIdentifier
+            }
         } catch {
-            print("Error saving event to calendar: \(error)")
+            print("Error saving event to calendar: \(error.localizedDescription)")
         }
     }
 
     @MainActor
     func updateEventInCalendar(_ item: TimelineItem) async {
-        // This logic will be updated to use the event identifier
-        // For now, it mirrors the old, fragile title-based search
-        let predicate = eventStore.predicateForEvents(withStart: item.date, end: item.endDate ?? item.date, calendars: nil)
-        guard let event = eventStore.events(matching: predicate).first(where: { $0.title == item.title }) else {
-            await addEventToCalendar(item) // If not found, create it
+        // Use the unique identifier to find the exact event to update.
+        guard let identifier = item.calendarItemIdentifier,
+              let event = eventStore.event(withIdentifier: identifier) else {
+            // If we can't find it by ID, it might be a new item created in the app.
+            await addEventToCalendar(item)
             return
         }
         
         event.title = item.title
         event.notes = item.notes
         event.startDate = item.time ?? item.date
-        event.endDate = item.endDate ?? Calendar.current.date(byAdding: .hour, value: 1, to: item.time ?? item.date)
+        event.endDate = item.endDate ?? item.time ?? item.date
         
         do {
             try eventStore.save(event, span: .thisEvent)
         } catch {
-            print("Error updating event in calendar: \(error)")
+            print("Error updating event in calendar: \(error.localizedDescription)")
         }
     }
 
     @MainActor
     func removeEventFromCalendar(_ item: TimelineItem) async {
-        // This logic will also be updated to use the event identifier
-        let predicate = eventStore.predicateForEvents(withStart: item.date, end: item.endDate ?? item.date, calendars: nil)
-        guard let event = eventStore.events(matching: predicate).first(where: { $0.title == item.title }) else { return }
+        // Use the unique identifier to find the exact event to remove.
+        guard let identifier = item.calendarItemIdentifier,
+              let event = eventStore.event(withIdentifier: identifier) else { return }
         
         do {
             try eventStore.remove(event, span: .thisEvent)
         } catch {
-            print("Error removing event from calendar: \(error)")
+            print("Error removing event from calendar: \(error.localizedDescription)")
         }
     }
 }

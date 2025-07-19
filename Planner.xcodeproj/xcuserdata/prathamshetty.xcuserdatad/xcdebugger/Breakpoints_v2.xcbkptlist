@@ -18,36 +18,6 @@
             endingLineNumber = "181"
             landmarkName = "addEvent(title:startDate:endDate:)"
             landmarkType = "7">
-            <Locations>
-               <Location
-                  uuid = "8B85698E-1B75-4143-B828-B4A265E8F4BE - 44ae5bb9d0cb204d"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "(1) suspend resume partial function for Planner.PlannerViewModel.requestNotificationPermission() async -&gt; ()"
-                  moduleName = "Planner.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/prathamshetty/Documents/Planner/Planner/PlannerViewModel.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "181"
-                  endingLineNumber = "181">
-               </Location>
-               <Location
-                  uuid = "8B85698E-1B75-4143-B828-B4A265E8F4BE - 27c7c3441f8629b"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "Planner.PlannerViewModel.addEvent(title: Swift.String, startDate: Foundation.Date, endDate: Foundation.Date) -&gt; ()"
-                  moduleName = "Planner.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/prathamshetty/Documents/Planner/Planner/PlannerViewModel.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "181"
-                  endingLineNumber = "181">
-               </Location>
-            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>

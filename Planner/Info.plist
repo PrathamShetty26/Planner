@@ -2,13 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSHealthShareUsageDescription</key>
-	<string>We need access to read your health data to display your steps and active energy.</string>
-	<key>NSHealthUpdateUsageDescription</key>
-	<string>We need access to write health data to track your activities.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>We need calendar access to manage your events and tasks</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>We need notification access to remind you of tasks and events</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

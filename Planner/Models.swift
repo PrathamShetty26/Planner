@@ -18,6 +18,7 @@ public struct TimelineItem: Identifiable, Equatable {
     public var time: Date?
     public var endDate: Date?
     public var location: String?
+    public var calendarItemIdentifier: String? // To link back to EKEvent or EKReminder
     
     public static func == (lhs: TimelineItem, rhs: TimelineItem) -> Bool {
         lhs.id == rhs.id
